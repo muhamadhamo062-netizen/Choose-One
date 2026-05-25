@@ -21,27 +21,27 @@
     },
     {
       "path": "/api/internal/recurring/scan",
-      "schedule": "0 2 * * *"
+      "schedule": "0 1 * * *"
     },
     {
       "path": "/api/cron/cleanup",
-      "schedule": "0 * * * *"
+      "schedule": "0 1 * * *"
     },
     {
       "path": "/api/cron/sync-metrics",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 1 * * *"
     },
     {
       "path": "/api/cron/monthly-audit",
-      "schedule": "0 8 1,15 * *"
+      "schedule": "0 1 * * *"
     },
     {
       "path": "/api/internal/removal/process?mode=execute&limit=25",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 1 * * *"
     },
     {
       "path": "/api/internal/removal/process?mode=verify&limit=25",
-      "schedule": "0 3 * * *"
+      "schedule": "0 1 * * *"
     }
   ]
 }
