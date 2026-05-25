@@ -1,0 +1,22 @@
+{
+  "extends": "next/core-web-vitals",
+  "plugins": ["privacy-eraser"],
+  "rules": {
+    "privacy-eraser/no-ui-subscription-language": "off",
+    "privacy-eraser/no-messaging-legacy-api": "error"
+  },
+  "overrides": [
+    {
+      "files": [
+        "app/**/*.{js,jsx,ts,tsx}",
+        "components/**/*.{js,jsx,ts,tsx}"
+      ],
+      "excludedFiles": [
+        "app/api/**/*"
+      ],
+      "rules": {
+        "privacy-eraser/no-ui-subscription-language": "error"
+      }
+    }
+  ]
+}

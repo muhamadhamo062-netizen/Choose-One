@@ -1,0 +1,21 @@
+# Optional: local PostgreSQL matching default .env.local
+#   docker compose -f docker-compose.dev.yml up -d
+# Then: npm run db:ready && npm run dev:local
+#
+# If port 5432 is already used by a local Postgres install, either stop that service
+# or change the left-hand port: "5433:5432" and set DATABASE_URL port to 5433.
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: privacyeraser-pg
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: privacyeraser
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d privacyeraser"]
+      interval: 3s
+      timeout: 5s
+      retries: 5

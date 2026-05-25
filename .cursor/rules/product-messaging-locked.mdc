@@ -1,0 +1,12 @@
+---
+description: Product UX copy is locked; no messaging architecture changes
+alwaysApply: true
+---
+
+# Locked: `CORE_PRODUCT_COPY` only
+
+- **Source of truth:** `lib/product-messaging.ts` — `CORE_PRODUCT_COPY` (frozen). UI: `import { CORE_PRODUCT_COPY as COPY }` and `COPY…` only.
+- **Do not** add UI_MESSAGE_MAP, getProductMessage, path-based getters, getProductCopy, runtime contextual merge, or new modules that wrap the copy tree. ESLint: `privacy-eraser/no-messaging-legacy-api` + `no-ui-subscription-language` (in app/components).
+- **Allowed:** edit string **content** inside the core copy; UI/layout/styling; new sections that use `COPY` as above. **Not allowed:** refactor the messaging file structure, new abstraction layers, or reintroducing banned imports.
+
+This phase: conversion, pricing tests, UI polish, backend, performance — not copy architecture.

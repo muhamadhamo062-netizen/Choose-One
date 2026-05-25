@@ -1,0 +1,373 @@
+// Supabase (required for this repo): do not use 127.0.0.1 / Docker for DATABASE_URL
+// - DATABASE_URL: Transaction pooler, port 6543, ?pgbouncer=true&connection_limit=1&sslmode=require&schema=public
+// - DIRECT_URL: Direct db.*.supabase.co:5432 for prisma db push / migrate (copy from dashboard)
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id             String         @id @default(uuid())
+  email          String         @unique
+  passwordHash   String?        @map("password_hash")
+  fullName       String?        @map("full_name")
+  referredByCode String?        @map("referred_by_code")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  scans          Scan[]
+  subscriptions  Subscription[]
+  referrals      Referral[]
+  removalJobs    RemovalJob[]
+  deepScanUsages DeepScanUsage[]
+  auditPdfs      AuditPdf[]
+  caseReports    CaseReport[]
+}
+
+/// Lifetime plan API credit tracking — manual deep scans vs automated bi-weekly audits.
+model DeepScanUsage {
+  id           String   @id @default(uuid())
+  userId       String   @map("user_id")
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind         String
+  cycleStart   DateTime @map("cycle_start")
+  publicScanId String?  @map("public_scan_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([userId, kind, cycleStart])
+  @@map("deep_scan_usage")
+}
+
+/// Authoritative scan row; `publicScanId` is the client-facing scan id (UUID string).
+model Scan {
+  id             String        @id @default(uuid())
+  publicScanId   String        @unique @map("public_scan_id")
+  userId         String?       @map("user_id")
+  user           User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  exposureScore  Int           @map("exposure_score")
+  brokersFound   Int           @map("brokers_found")
+  state          String
+  riskLevel      String?       @map("risk_level")
+  fullName       String?       @map("full_name")
+  email          String?
+  discoveryJson  Json?         @map("discovery_json")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  session        ScanSession?
+  removalJobs    RemovalJob[]
+  auditPdf       AuditPdf?
+}
+
+/// Session snapshot (metadata) linked 1:1 to Scan; mirrors scan table fields for queries.
+model ScanSession {
+  id             String   @id @default(uuid())
+  scanDbId       String   @unique @map("scan_db_id")
+  scan           Scan     @relation(fields: [scanDbId], references: [id], onDelete: Cascade)
+  publicScanId   String   @map("public_scan_id")
+  email          String?
+  state          String?
+  exposureScore  Int      @map("exposure_score")
+  brokersFound   Int      @map("brokers_found")
+  createdAt      DateTime @default(now()) @map("created_at")
+}
+
+model Subscription {
+  id                  String   @id @default(uuid())
+  userId              String   @map("user_id")
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  plan                String
+  status              String
+  startedAt           DateTime @default(now()) @map("started_at")
+  // Set when created from Paddle; used to issue session only after server-verified payment.
+  paddleTransactionId String?  @unique @map("paddle_transaction_id")
+
+  @@index([userId, status])
+}
+
+/// One row per `event_id` from Paddle (idempotency for webhooks).
+model ProcessedPaddleEvent {
+  eventId   String   @id @map("event_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("processed_paddle_events")
+}
+
+model ProcessedStripeCheckoutSession {
+  sessionId  String   @id @map("session_id")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@map("processed_stripe_checkout_sessions")
+}
+
+/// Async scan job: API enqueues; background worker runs discovery + DB persist.
+model ScanJob {
+  id            String    @id @default(cuid())
+  publicScanId  String    @unique @map("public_scan_id")
+  userId        String?   @map("user_id")
+  stateCode     String    @map("state_code")
+  fullName      String    @map("full_name")
+  email         String?
+  kind          String    @default("initial")
+  status        String
+  attempts      Int       @default(0)
+  lastError     String?   @map("last_error") @db.Text
+  createdAt     DateTime  @default(now()) @map("created_at")
+  startedAt     DateTime? @map("started_at")
+  completedAt   DateTime? @map("completed_at")
+
+  @@index([status, createdAt])
+  @@index([userId])
+  @@map("scan_jobs")
+}
+
+/// Server-side analytics and funnel; populated by emitServerEvent and /api/events.
+model Event {
+  id         String   @id @default(cuid())
+  userId     String?  @map("user_id")
+  event      String
+  properties Json
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([event, createdAt])
+  @@map("events")
+}
+
+/// Audit-grade analytics trail for scan/removal/verification metrics.
+model AnalyticsEvent {
+  id        String   @id @default(cuid())
+  eventId   String   @unique @map("event_id")
+  userId    String?  @map("user_id")
+  scanId    String?  @map("scan_id")
+  type      String
+  metadata  Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([type, createdAt])
+  @@index([userId, createdAt])
+  @@index([scanId, createdAt])
+  @@index([scanId, type, createdAt])
+  @@map("analytics_events")
+}
+
+/// Fast counters for dashboard reads (global singleton).
+model AnalyticsMaterializedGlobal {
+  id                  String   @id
+  totalScans          Int      @default(0) @map("total_scans")
+  totalSourcesFound   Int      @default(0) @map("total_sources_found")
+  totalRemovalRequests Int     @default(0) @map("total_removal_requests")
+  verifiedRemovals    Int      @default(0) @map("verified_removals")
+  rejectedEvents      Int      @default(0) @map("rejected_events")
+  duplicateEvents     Int      @default(0) @map("duplicate_events")
+  lastUpdated         DateTime @updatedAt @map("last_updated")
+
+  @@map("analytics_materialized_global")
+}
+
+/// Per-scan counters and latest verification state.
+model AnalyticsMaterializedScan {
+  scanId              String   @id @map("scan_id")
+  sourcesFound        Int      @default(0) @map("sources_found")
+  verificationStatus  String?  @map("verification_status")
+  eventCount          Int      @default(0) @map("event_count")
+  lastUpdated         DateTime @updatedAt @map("last_updated")
+
+  @@map("analytics_materialized_scan")
+}
+
+/// Async projection queue from analytics_events to derived read models.
+model AnalyticsProjectionQueue {
+  id          String    @id @default(cuid())
+  eventId     String    @unique @map("event_id")
+  priority    String
+  status      String
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now()) @map("available_at")
+  expiresAt   DateTime  @map("expires_at")
+  lastError   String?   @map("last_error") @db.Text
+  createdAt   DateTime  @default(now()) @map("created_at")
+  processedAt DateTime? @map("processed_at")
+
+  @@index([status, priority, availableAt, createdAt])
+  @@map("analytics_projection_queue")
+}
+
+/// Idempotency guard for projection worker (process each event once).
+model AnalyticsProjectionProcessed {
+  eventId     String   @id @map("event_id")
+  processedAt DateTime @default(now()) @map("processed_at")
+
+  @@map("analytics_projection_processed")
+}
+
+model AnalyticsProjectionDeadLetterQueue {
+  id             String   @id @default(cuid())
+  eventId        String   @unique @map("event_id")
+  error          String   @db.Text
+  stackTrace     String?  @map("stack_trace") @db.Text
+  failedAt       DateTime @default(now()) @map("failed_at")
+  retryCount     Int      @default(0) @map("retry_count")
+  lastKnownState String?  @map("last_known_state")
+
+  @@index([failedAt])
+  @@map("analytics_projection_dead_letter_queue")
+}
+
+/// Read-only time-travel snapshots for replay diagnostics.
+model AnalyticsTimeTravelSnapshot {
+  id                  String   @id @default(cuid())
+  scanId              String   @map("scan_id")
+  eventId             String   @map("event_id")
+  eventType           String   @map("event_type")
+  eventCursor         Int      @map("event_cursor")
+  materializedState   Json     @map("materialized_state")
+  derivedStateHash    String   @map("derived_state_hash")
+  snapshotHash        String   @map("snapshot_hash")
+  createdAt           DateTime @default(now()) @map("created_at")
+
+  @@unique([scanId, eventId])
+  @@index([scanId, createdAt])
+  @@index([scanId, eventCursor])
+  @@map("analytics_time_travel_snapshots")
+}
+
+/// Replay cursor checkpoint per scan for incremental forensic replays.
+model AnalyticsReplayCursor {
+  scanId              String   @id @map("scan_id")
+  lastEventCursor     Int      @default(0) @map("last_event_cursor")
+  lastEventId         String?  @map("last_event_id")
+  lastState           String?  @map("last_state")
+  derivedStateHash    String?  @map("derived_state_hash")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+
+  @@map("analytics_replay_cursor")
+}
+
+/// Immutable recovery point records for rollback/debugging derived analytics state.
+model AnalyticsRecoveryPoint {
+  id                 String   @id @default(cuid())
+  label              String
+  snapshot           Json
+  controlPlaneState  Json     @map("control_plane_state")
+  observabilityState Json     @map("observability_state")
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("analytics_recovery_points")
+}
+
+model AnalyticsSystemState {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("analytics_system_state")
+}
+
+model Affiliate {
+  id                String     @id @default(uuid())
+  name              String
+  email             String     @unique
+  passwordHash      String     @map("password_hash")
+  code              String     @unique
+  commissionCents   Int        @default(0) @map("commission_cents")
+  createdAt         DateTime   @default(now()) @map("created_at")
+  updatedAt         DateTime   @updatedAt @map("updated_at")
+  referrals         Referral[]
+  visits            AffiliateVisit[]
+}
+
+model Referral {
+  id               String     @id @default(uuid())
+  affiliateId      String     @map("affiliate_id")
+  affiliate        Affiliate  @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  userId           String?    @map("user_id")
+  user             User?      @relation(fields: [userId], references: [id], onDelete: SetNull)
+  buyerEmail       String     @map("buyer_email")
+  referralCode     String     @map("referral_code")
+  status           String     @default("pending")
+  saleAmountCents  Int        @default(0) @map("sale_amount_cents")
+  commissionCents  Int        @default(0) @map("commission_cents")
+  payoutStatus     String     @default("unpaid") @map("payout_status")
+  paidAt           DateTime?  @map("paid_at")
+  stripeEventId    String?    @unique @map("stripe_event_id")
+  stripePaymentId  String?    @unique @map("stripe_payment_id")
+  convertedAt      DateTime?  @map("converted_at")
+  createdAt        DateTime   @default(now()) @map("created_at")
+
+  @@index([affiliateId, createdAt])
+  @@index([userId, createdAt])
+  @@index([buyerEmail, createdAt])
+  @@map("referrals")
+}
+
+model AffiliateVisit {
+  id           String    @id @default(uuid())
+  affiliateId  String    @map("affiliate_id")
+  affiliate    Affiliate @relation(fields: [affiliateId], references: [id], onDelete: Cascade)
+  referralCode String    @map("referral_code")
+  visitKey     String    @unique @map("visit_key")
+  landingPath  String?   @map("landing_path")
+  ipAddress    String?   @map("ip_address")
+  userAgent    String?   @map("user_agent")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  @@index([affiliateId, createdAt])
+  @@index([referralCode, createdAt])
+  @@index([visitKey])
+  @@map("affiliate_visits")
+}
+
+model RemovalJob {
+  id                 String   @id @default(uuid())
+  userId             String   @map("user_id")
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanId             String?  @map("scan_id")
+  scan               Scan?    @relation(fields: [scanId], references: [publicScanId], onDelete: SetNull)
+  brokerName         String   @map("broker_name")
+  status             String   @default("pending") // pending | sent | verified | failed
+  requestChannel     String   @map("request_channel") // api | email
+  requestTarget      String?  @map("request_target")
+  payload            Json?
+  externalRequestId  String?  @map("external_request_id")
+  attemptCount       Int      @default(0) @map("attempt_count")
+  lastError          String?  @map("last_error") @db.Text
+  requestedAt        DateTime? @map("requested_at")
+  nextVerificationAt DateTime? @map("next_verification_at")
+  verifiedAt         DateTime? @map("verified_at")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  @@index([userId, status, nextVerificationAt])
+  @@index([scanId, createdAt])
+  @@map("removal_jobs")
+}
+
+/// Stored PDF reports for users/scans (Supabase Postgres via Prisma).
+model AuditPdf {
+  id         String   @id @default(uuid())
+  userId     String?  @map("user_id")
+  user       User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  scanId     String   @unique @map("scan_id") // Scan.publicScanId
+  scan       Scan     @relation(fields: [scanId], references: [publicScanId], onDelete: Cascade)
+  pdfBytes   Bytes    @map("pdf_bytes")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("audit_pdfs")
+}
+
+model CaseReport {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  scanId     String?  @map("scan_id") // Scan.publicScanId (optional)
+  fileKey    String   @unique @map("file_key")
+  publicUrl  String   @map("public_url")
+  status     String   @default("ready") // ready | failed
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@map("case_reports")
+}
