@@ -3,7 +3,6 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "postinstall": "prisma generate",
     "prebuild": "node scripts/ensure-prisma.cjs && npx tsx -r tsconfig-paths/register scripts/validate-env-database.ts && node scripts/pwa-generate-icons.cjs",
     "predev": "node scripts/ensure-prisma.cjs && node scripts/pwa-generate-icons.cjs",
     "dev": "node scripts/run-with-env-local.cjs next dev",

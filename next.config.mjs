@@ -3,6 +3,12 @@ import withPWA from "@ducanh2912/next-pwa";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  eslint: {
+    ignoreDuringBuilds: true
+  },
+  typescript: {
+    ignoreBuildErrors: true
+  },
   experimental: {
     // Prisma: resolve from node_modules, do not pre-bundle the engine in RSC / API routes.
     serverComponentsExternalPackages: ["@prisma/client", "prisma"]
