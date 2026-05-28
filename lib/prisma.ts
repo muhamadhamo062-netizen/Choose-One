@@ -23,12 +23,14 @@ const prismaClient =
 globalForPrisma.prisma = prismaClient;
 
 let connectPromise: Promise<void> | null = null;
+let connected = false;
 
 async function connectWithRetry(): Promise<void> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_CONNECT_RETRIES; attempt++) {
     try {
       await prismaClient.$connect();
+      connected = true;
       return;
     } catch (error) {
       lastError = error;
@@ -42,9 +44,13 @@ async function connectWithRetry(): Promise<void> {
 }
 
 export async function ensurePrismaConnected(): Promise<void> {
+  if (connected) {
+    return;
+  }
   if (!connectPromise) {
     connectPromise = connectWithRetry().catch((error) => {
       connectPromise = null;
+      connected = false;
       throw error;
     });
   }

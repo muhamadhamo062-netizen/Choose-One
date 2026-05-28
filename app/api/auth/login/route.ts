@@ -1,18 +1,20 @@
 import { compare } from "bcryptjs";
-import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { signSessionToken, SESSION_COOKIE, sessionCookieOptions } from "@/lib/auth-cookies";
-import { prisma } from "@/lib/prisma";
-import { devPrismaConnectionFields, logPrismaConnectionError } from "@/lib/logPrismaConnectionError";
-import { isSupabaseEnvUnfinishedTemplate } from "@/lib/validateSupabasePrismaEnv";
-import { safeDbResult } from "@/lib/safe-db";
+import { getAuthEnvIssue, runAuthDb } from "@/lib/auth-db";
+import { logPrismaConnectionError } from "@/lib/logPrismaConnectionError";
 import { jsonServiceDegraded } from "@/lib/api-response";
-import { createDirectPrismaClient } from "@/lib/prisma-direct";
 import { sendAuthOtpEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 30;
 
 export async function POST(request: Request) {
+  const envIssue = getAuthEnvIssue();
+  if (envIssue) {
+    return jsonServiceDegraded(envIssue);
+  }
+
   let body: { email?: string; password?: string };
   try {
     body = (await request.json()) as { email?: string; password?: string };
@@ -25,68 +27,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid_credentials" }, { status: 400 });
   }
 
-  const du = process.env.DATABASE_URL?.trim() ?? "";
-  const di = process.env.DIRECT_URL?.trim() ?? "";
-  if (!du || !di) {
-    return jsonServiceDegraded("database_not_configured");
-  }
-  if (isSupabaseEnvUnfinishedTemplate(du, di)) {
-    return jsonServiceDegraded("supabase_paste_required");
-  }
-
-  let user: {
-    id: string;
-    email: string;
-    fullName: string | null;
-    passwordHash: string | null;
-  } | null = null;
-  let dbReachable = true;
-
-  const userRes = await safeDbResult(() =>
-    prisma.user.findUnique({
+  const userRes = await runAuthDb((db) =>
+    db.user.findUnique({
       where: { email },
       select: { id: true, email: true, fullName: true, passwordHash: true }
     })
   );
-  if (userRes.ok) {
-    user = userRes.value;
-  } else {
-    dbReachable = false;
-    const directPrisma = createDirectPrismaClient();
-    if (directPrisma) {
-      const directRes = await safeDbResult(() =>
-        directPrisma.user.findUnique({
-          where: { email },
-          select: { id: true, email: true, fullName: true, passwordHash: true }
-        })
-      );
-      await directPrisma.$disconnect().catch(() => undefined);
-      if (directRes.ok) {
-        user = directRes.value;
-        dbReachable = true;
-      }
-    }
-  }
 
-  if (!dbReachable) {
-    logPrismaConnectionError("auth/login", new Error("user_find_failed_all_paths"));
-    if (process.env.NODE_ENV === "development") {
-      const emergencyUserId = `emg_${createHash("sha256").update(email).digest("hex").slice(0, 24)}`;
-      const token = await signSessionToken(emergencyUserId);
-      const emergencyRes = NextResponse.json({
-        ok: true,
-        user: { id: emergencyUserId, email, fullName: email.split("@")[0] || "Member" },
-        emergencyAuth: true
-      });
-      emergencyRes.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
-      return emergencyRes;
-    }
+  if (!userRes.ok) {
+    logPrismaConnectionError("auth/login", new Error("user_find_failed"));
     return NextResponse.json(
-      { ok: false, error: "service_unavailable", message: "Sign-in is temporarily unavailable. Please try again.", ...devPrismaConnectionFields(new Error("db")) },
+      {
+        ok: false,
+        error: "service_unavailable",
+        reason: "database_unavailable",
+        message: "Sign-in is temporarily unavailable. Please try again."
+      },
       { status: 200 }
     );
   }
 
+  const user = userRes.value;
   if (!user) {
     return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
   }
@@ -94,12 +55,20 @@ export async function POST(request: Request) {
   if (!user.passwordHash) {
     return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
   }
-  const ok = await compare(password, user.passwordHash);
-  if (!ok) {
+
+  const passwordOk = await compare(password, user.passwordHash);
+  if (!passwordOk) {
     return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
   }
 
-  const token = await signSessionToken(user.id);
+  let token: string;
+  try {
+    token = await signSessionToken(user.id);
+  } catch (e) {
+    logPrismaConnectionError("auth/login:session", e);
+    return jsonServiceDegraded("session_not_configured");
+  }
+
   void sendAuthOtpEmail(user.email, "login");
   const res = NextResponse.json({
     ok: true,

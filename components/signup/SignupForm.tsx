@@ -31,7 +31,10 @@ function signupApiErrorMessage(error: string | undefined): string {
     case "weak_password":
       return "Password must be at least 8 characters";
     case "temporary_unavailable":
+    case "service_unavailable":
       return "الخدمة مشغولة مؤقتًا. حاول مرة أخرى بعد ثوانٍ.";
+    case "session_not_configured":
+      return "إعداد الجلسة ناقص على السيرفر. أضف SESSION_SECRET (32 حرفًا أو أكثر) في Vercel → Environment Variables.";
     case "supabase_paste_required":
     case "database_not_configured":
       return "";
@@ -44,6 +47,14 @@ function signupApiErrorMessage(error: string | undefined): string {
 
 function isSupabaseEnvSetupError(error: string | undefined): boolean {
   return error === "supabase_paste_required" || error === "database_not_configured";
+}
+
+/** API may return `error: service_unavailable` with a specific `reason`. */
+function apiErrKey(j: { error?: string; reason?: string }): string | undefined {
+  if (j.reason && j.reason !== "database_unavailable") {
+    return j.reason;
+  }
+  return j.error;
 }
 
 export function SignupForm() {
@@ -173,12 +184,14 @@ export function SignupForm() {
       const j = (await res.json().catch(() => ({}))) as {
         ok?: boolean;
         error?: string;
+        reason?: string;
         linkedScan?: boolean;
         scanId?: string;
         user?: { id: string; email: string };
       };
-      if (j.error === "supabase_paste_required" || j.error === "database_not_configured") {
-        setErrCode(j.error);
+      const errKey = apiErrKey(j);
+      if (errKey === "supabase_paste_required" || errKey === "database_not_configured") {
+        setErrCode(errKey);
         setErr("");
         setPending(false);
         return;
@@ -230,11 +243,14 @@ export function SignupForm() {
             return;
           }
           if (loginRes.ok && lj.ok === false) {
-            setErrCode(lj.error ?? null);
+            const loginKey = apiErrKey(lj);
+            setErrCode(loginKey ?? null);
             setErr(
-              lj.error === "service_unavailable" || lj.reason === "database_unavailable"
-                ? signupApiErrorMessage("temporary_unavailable")
-                : lj.message ?? "Could not sign in. Try again in a moment."
+              loginKey === "temporary_unavailable" ||
+                lj.error === "service_unavailable" ||
+                lj.reason === "database_unavailable"
+                ? signupApiErrorMessage(loginKey ?? "temporary_unavailable")
+                : signupApiErrorMessage(loginKey) || lj.message || "Could not sign in. Try again in a moment."
             );
             setPending(false);
             return;
@@ -269,25 +285,25 @@ export function SignupForm() {
           setPending(false);
           return;
         }
-        setErrCode(j.error ?? null);
-        setErr(signupApiErrorMessage(j.error));
+        setErrCode(errKey ?? null);
+        setErr(signupApiErrorMessage(errKey));
         setPending(false);
         return;
       }
       if (j.ok === false || !j.user) {
-        if (j.error === "service_unavailable" || j.error === "temporary_unavailable" || j.error === "create_failed") {
+        if (
+          errKey === "service_unavailable" ||
+          errKey === "temporary_unavailable" ||
+          errKey === "create_failed"
+        ) {
           const loggedIn = await tryLoginFallback();
           if (loggedIn) {
             setPending(false);
             return;
           }
         }
-        setErrCode(j.error ?? null);
-        setErr(
-          j.error === "service_unavailable"
-            ? signupApiErrorMessage("temporary_unavailable")
-            : signupApiErrorMessage(j.error)
-        );
+        setErrCode(errKey ?? null);
+        setErr(signupApiErrorMessage(errKey));
         setPending(false);
         return;
       }

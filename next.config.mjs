@@ -15,25 +15,19 @@ const nextConfig = {
   }
 };
 
-// PWA: production only. Default runtime cache in @ducanh2912/next-pwa is NetworkFirst for /api/* (GET, 10s),
-// matching the spec for /api/scan, /api/user, /api/state. Static assets, pages, and RSC use cache-friendly strategies.
+// PWA: production only. Do NOT set navigateFallback to /offline — on Vercel + App Router, slow or
+// failed RSC navigations were served as "You are offline" while the user was actually online.
 const withPWAWrapped = withPWA({
   dest: "public",
   disable: process.env.NODE_ENV === "development",
   register: true,
   skipWaiting: true,
   reloadOnOnline: true,
-  cacheOnFrontendNav: true,
-  cacheStartUrl: true,
-  fallbacks: {
-    document: "/offline"
-  },
+  cacheOnFrontendNav: false,
+  cacheStartUrl: false,
   workboxOptions: {
-    navigateFallback: "/offline",
-    // Never cache API responses: stale 401/NetworkFirst breaks session after login (PWA).
     runtimeCaching: [
       {
-        // All /api/* must bypass SW cache (session, auth, scan) — any HTTP method.
         urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
         handler: "NetworkOnly"
       }
