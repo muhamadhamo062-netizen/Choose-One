@@ -1,7 +1,9 @@
 import type { PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { createDirectPrismaClient } from "@/lib/prisma-direct";
 import { getRawSessionSecret } from "@/lib/auth-secret";
+import { logPrismaConnectionError } from "@/lib/logPrismaConnectionError";
 import { safeDbResult, type SafeDbResult } from "@/lib/safe-db";
 import { isSupabaseEnvUnfinishedTemplate } from "@/lib/validateSupabasePrismaEnv";
 
@@ -23,33 +25,63 @@ export function getAuthEnvIssue(): AuthEnvIssue | null {
   return null;
 }
 
-/** Production/Vercel: prefer DIRECT_URL — pooler + per-query $connect often fails on serverless. */
-function preferDirectFirst(): boolean {
+function isServerlessProd(): boolean {
   return Boolean(process.env.VERCEL) || process.env.NODE_ENV === "production";
 }
 
 type DbOp<T> = (db: PrismaClient) => Promise<T>;
 
+async function withDirectClient<T>(op: DbOp<T>): Promise<SafeDbResult<T>> {
+  const direct = createDirectPrismaClient();
+  if (!direct) {
+    return { ok: false };
+  }
+  try {
+    await direct.$connect();
+    const value = await op(direct);
+    return { ok: true, value };
+  } catch (e) {
+    logPrismaConnectionError("auth-db:direct", e);
+    return { ok: false };
+  } finally {
+    await direct.$disconnect().catch(() => undefined);
+  }
+}
+
 /**
- * Runs a Prisma op for auth flows: direct connection first on Vercel, then pooled client.
+ * Runs a Prisma op for signup/login. On Vercel: **direct** Postgres only (pooler breaks serverless auth).
  */
 export async function runAuthDb<T>(op: DbOp<T>): Promise<SafeDbResult<T>> {
-  const direct = createDirectPrismaClient();
+  if (isServerlessProd()) {
+    return withDirectClient(op);
+  }
 
-  if (preferDirectFirst() && direct) {
-    const first = await safeDbResult(() => op(direct));
-    await direct.$disconnect().catch(() => undefined);
+  const direct = createDirectPrismaClient();
+  if (direct) {
+    const first = await withDirectClient(op);
     if (first.ok) {
       return first;
     }
   }
 
-  const pooled = await safeDbResult(() => op(prisma as unknown as PrismaClient));
-  if (pooled.ok || !direct) {
-    return pooled;
+  return safeDbResult(() => op(prisma as unknown as PrismaClient));
+}
+
+/** Used by /api/health/auth — same path as signup lookup. */
+export async function pingAuthDatabase(): Promise<
+  | { ok: true; latencyMs: number; via: "direct" }
+  | { ok: false; issue: AuthEnvIssue | "database_unavailable"; prismaCode?: string }
+> {
+  const envIssue = getAuthEnvIssue();
+  if (envIssue) {
+    return { ok: false, issue: envIssue };
   }
 
-  const second = await safeDbResult(() => op(direct));
-  await direct.$disconnect().catch(() => undefined);
-  return second;
+  const started = Date.now();
+  const ping = await withDirectClient((db) => db.$queryRaw(Prisma.sql`SELECT 1 AS ok`));
+  if (!ping.ok) {
+    return { ok: false, issue: "database_unavailable" };
+  }
+
+  return { ok: true, latencyMs: Date.now() - started, via: "direct" };
 }

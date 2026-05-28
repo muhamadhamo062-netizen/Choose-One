@@ -41,6 +41,7 @@ export async function POST(request: Request) {
         ok: false,
         error: "service_unavailable",
         reason: "database_unavailable",
+        hint: "Open /api/health/auth on this domain after setting Vercel env vars",
         message: "Sign-in is temporarily unavailable. Please try again."
       },
       { status: 200 }

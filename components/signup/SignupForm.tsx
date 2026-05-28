@@ -30,6 +30,8 @@ function signupApiErrorMessage(error: string | undefined): string {
       return "Enter a valid email";
     case "weak_password":
       return "Password must be at least 8 characters";
+    case "database_unavailable":
+      return "لا يوجد اتصال بقاعدة البيانات من Vercel. من Supabase انسخ DATABASE_URL و DIRECT_URL إلى Vercel ثم Redeploy، أو شغّل: node scripts/sync-vercel-env.cjs";
     case "temporary_unavailable":
     case "service_unavailable":
       return "الخدمة مشغولة مؤقتًا. حاول مرة أخرى بعد ثوانٍ.";

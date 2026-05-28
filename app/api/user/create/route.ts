@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   const existingRes = await runAuthDb((db) => db.user.findUnique({ where: { email }, select: { id: true } }));
   if (!existingRes.ok) {
     logPrismaConnectionError("user/create:lookup", new Error("db_lookup_failed"));
-    return jsonServiceDegraded("temporary_unavailable");
+    return jsonServiceDegraded("database_unavailable");
   }
   if (existingRes.value) {
     return NextResponse.json({ error: "email_in_use" }, { status: 409 });
