@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionReveal } from "@/components/ui/SectionReveal";
 import { SecureCheckoutBar } from "@/components/trust/SecureCheckoutBar";
-import { RefundGuaranteeCallout } from "@/components/trust/RefundGuaranteeCallout";
 import { useUnlockModal } from "@/hooks/useUnlockModal";
 import { trackEvent } from "@/lib/analytics";
 import { UserState, setUserState } from "@/lib/useGlobalUserState";
@@ -122,7 +121,6 @@ export function PricingSection() {
                 ))}
               </ul>
               <div className="mt-8 flex flex-col items-stretch gap-3">
-                <RefundGuaranteeCallout variant="section" />
                 <Button type="button" onClick={onCta} className="w-full py-3.5 text-base font-semibold">
                   Activate Lifetime Protection
                 </Button>

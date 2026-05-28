@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { LegalProseLayout } from "@/components/legal/LegalProseLayout";
 
 export const metadata: Metadata = {
@@ -48,20 +47,9 @@ export default function TermsPage() {
           receipts.
         </p>
         <p>
-          <strong>AppSumo purchases.</strong> If you purchased PrivacyEraser.ai through AppSumo, you are eligible for a{" "}
-          <strong>full refund within sixty (60) days</strong> of your purchase date, <strong>no questions asked</strong>, in
-          line with AppSumo marketplace expectations and our published guarantee. Refunds for AppSumo transactions are
-          processed according to AppSumo&apos;s procedures; see our{" "}
-          <Link href="/refund" className="text-primary underline-offset-2 hover:underline">
-            Refund Policy
-          </Link>{" "}
-          for a plain-language summary and guidance.
-        </p>
-        <p>
-          <strong>Other purchases.</strong> For purchases made outside of AppSumo (for example, direct checkout on our
-          website), refund eligibility is governed by the terms displayed at checkout, this Agreement, our Refund Policy, and
-          applicable law. Unless otherwise required by law or expressly stated at purchase, digital access may be
-          non-refundable after delivery except where your payment processor or jurisdiction requires otherwise.
+          Refund eligibility is governed by the terms displayed at checkout, this Agreement, and applicable law. Unless
+          otherwise required by law or expressly stated at purchase, digital access may be non-refundable after delivery
+          except where your payment processor or jurisdiction requires otherwise.
         </p>
         <p>
           If a charge is disputed, we may pause service until the dispute is resolved, subject to the processor&apos;s rules

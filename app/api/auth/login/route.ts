@@ -34,14 +34,24 @@ export async function POST(request: Request) {
     return jsonServiceDegraded("supabase_paste_required");
   }
 
+  let user: {
+    id: string;
+    email: string;
+    fullName: string | null;
+    passwordHash: string | null;
+  } | null = null;
+  let dbReachable = true;
+
   const userRes = await safeDbResult(() =>
     prisma.user.findUnique({
       where: { email },
       select: { id: true, email: true, fullName: true, passwordHash: true }
     })
   );
-  let user = userRes.ok ? userRes.value : null;
-  if (!userRes.ok) {
+  if (userRes.ok) {
+    user = userRes.value;
+  } else {
+    dbReachable = false;
     const directPrisma = createDirectPrismaClient();
     if (directPrisma) {
       const directRes = await safeDbResult(() =>
@@ -53,10 +63,12 @@ export async function POST(request: Request) {
       await directPrisma.$disconnect().catch(() => undefined);
       if (directRes.ok) {
         user = directRes.value;
+        dbReachable = true;
       }
     }
   }
-  if (!user) {
+
+  if (!dbReachable) {
     logPrismaConnectionError("auth/login", new Error("user_find_failed_all_paths"));
     if (process.env.NODE_ENV === "development") {
       const emergencyUserId = `emg_${createHash("sha256").update(email).digest("hex").slice(0, 24)}`;
@@ -75,7 +87,11 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!user?.passwordHash) {
+  if (!user) {
+    return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
+  }
+
+  if (!user.passwordHash) {
     return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
   }
   const ok = await compare(password, user.passwordHash);

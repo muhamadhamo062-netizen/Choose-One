@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Shield, ShieldCheck } from "lucide-react";
+import { Shield } from "lucide-react";
 import { CORE_PRODUCT_COPY as COPY } from "@/lib/product-messaging";
 import { cn } from "@/lib/utils";
 
@@ -63,7 +63,6 @@ export function Footer() {
           <FooterCol title={FT.columns.legal}>
             <FooterLink href="/privacy">{FT.links.privacy}</FooterLink>
             <FooterLink href="/terms">{FT.links.terms}</FooterLink>
-            <FooterLink href="/refund">{FT.links.refundPolicy}</FooterLink>
           </FooterCol>
 
           <FooterCol title={FT.columns.support}>
@@ -72,18 +71,6 @@ export function Footer() {
             <FooterLink href="/help">{FT.links.help}</FooterLink>
             <FooterLink href="/status">{FT.links.status}</FooterLink>
           </FooterCol>
-        </div>
-
-        <div className="mt-10 flex flex-col gap-3 rounded-xl border border-emerald-500/15 bg-slate-900/40 px-4 py-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5">
-          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-emerald-500/15 ring-1 ring-emerald-500/30">
-            <ShieldCheck className="h-5 w-5 text-emerald-400" aria-hidden />
-          </span>
-          <p className="text-sm leading-relaxed text-slate-400">
-            {COPY.refundGuarantee.footerTrustLine}{" "}
-            <Link href="/refund" className="font-medium text-emerald-400/95 underline-offset-2 hover:text-emerald-300 hover:underline">
-              {FT.links.refundPolicy}
-            </Link>
-          </p>
         </div>
 
         <div

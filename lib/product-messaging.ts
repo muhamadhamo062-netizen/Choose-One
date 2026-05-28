@@ -261,14 +261,6 @@ const _CORE_RAW = {
     ] as const
   },
 
-  /** Pricing section + paywall: AppSumo-aligned refund assurance (badge near checkout CTA). */
-  refundGuarantee: {
-    badgeLine: "60-Day Money Back Guarantee. No questions asked.",
-    sixtyDayMark: "60",
-    sixtyDayMarkSub: "day",
-    footerTrustLine: "AppSumo purchases are eligible for a full refund within 60 days — no questions asked."
-  },
-
   footer: {
     brand: "PrivacyEraser.ai",
     blurb:
@@ -291,7 +283,6 @@ const _CORE_RAW = {
       faq: "FAQ",
       privacy: "Privacy Policy",
       terms: "Terms of Service",
-      refundPolicy: "Refund Policy",
       help: "Help Center",
       status: "Status"
     },
@@ -323,20 +314,20 @@ const _CORE_RAW = {
   supportCenter: {
     metaTitle: "Support | PrivacyEraser.ai",
     metaDescription:
-      "Contact PrivacyEraser.ai for Lifetime Protection, AppSumo purchases, data broker removal, and account questions. We respond within one to two business days.",
+      "Contact PrivacyEraser.ai for Lifetime Protection, data broker removal, and account questions. We respond within one to two business days.",
     badge: "Customer success",
     headline: "How can we help?",
     subhead:
-      "Reach our team for billing, AppSumo Lifetime access, removal status, or technical questions. Secure delivery goes straight to our operations inbox.",
+      "Reach our team for billing, Lifetime Protection, removal status, or technical questions. Secure delivery goes straight to our operations inbox.",
     bullets: [
       "Responses typically within 24–48 hours on business days",
-      "Include your AppSumo redemption email or scan email for faster matching",
+      "Include the email you used at checkout or during your scan for faster matching",
       "Encrypted transit; we never sell your information"
     ] as const,
     columnTitle: "Send a message",
     columnHint:
       "Use the form below so your request is routed with full context. For sensitive details, describe the issue without posting passwords or payment card numbers.",
-    faqTeaser: "Looking for quick answers about Lifetime Protection or AppSumo?",
+    faqTeaser: "Looking for quick answers about Lifetime Protection?",
     faqLinkLabel: "Open FAQ",
     form: {
       nameLabel: "Name",
@@ -344,7 +335,7 @@ const _CORE_RAW = {
       emailLabel: "Email",
       emailPlaceholder: "you@example.com",
       subjectLabel: "Subject",
-      subjectPlaceholder: "e.g. AppSumo redemption, removal status",
+      subjectPlaceholder: "e.g. Lifetime access, removal status",
       messageLabel: "Message",
       messagePlaceholder: "Describe your question or issue — the more detail, the faster we can help.",
       submit: "Send message",
@@ -362,22 +353,22 @@ const _CORE_RAW = {
     }
   },
 
-  /** /faq — AppSumo & Lifetime-focused questions (dedicated page; landing uses `faq`). */
+  /** /faq — Lifetime-focused questions (dedicated page; landing uses `faq`). */
   faqPage: {
-    metaTitle: "FAQ — AppSumo & Lifetime Protection | PrivacyEraser.ai",
+    metaTitle: "FAQ — Lifetime Protection | PrivacyEraser.ai",
     metaDescription:
-      "Answers about the PrivacyEraser.ai Lifetime Deal on AppSumo, how broker removal works, and how we protect your data.",
-    kicker: "AppSumo & Lifetime Protection",
+      "Answers about PrivacyEraser.ai Lifetime Protection, how broker removal works, and how we protect your data.",
+    kicker: "Lifetime Protection",
     headline: "Frequently asked questions",
     subhead:
-      "Straight answers for founders and teams evaluating PrivacyEraser.ai through AppSumo — coverage, process, and security.",
+      "Straight answers about coverage, removal process, and how we handle your data.",
     supportPrompt: "Still need help?",
     supportLinkLabel: "Contact support",
     items: [
       {
         question: "How does the Lifetime Deal work?",
         answer:
-          "AppSumo Lifetime customers receive our Lifetime Protection tier: one-time purchase, no recurring subscription. That includes automated data broker removal attempts where supported, ongoing monitoring for relisting, and resubmission workflows when your information reappears on covered sources — plus product updates for brokers we integrate with over time."
+          "Lifetime Protection is a one-time purchase with no recurring subscription. That includes automated data broker removal attempts where supported, ongoing monitoring for relisting, and resubmission workflows when your information reappears on covered sources — plus product updates for brokers we integrate with over time."
       },
       {
         question: "How do you remove my data from brokers?",

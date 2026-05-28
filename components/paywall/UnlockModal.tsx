@@ -6,7 +6,6 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
 import { Check, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { RefundGuaranteeCallout } from "@/components/trust/RefundGuaranteeCallout";
 import { trackEvent } from "@/lib/analytics";
 import {
   STORAGE_CHECKOUT_EMAIL,
@@ -365,7 +364,6 @@ export function UnlockModal({ isOpen, source, onClose }: UnlockModalProps) {
               {PW.trustLine}
             </p>
             <div className="mt-5 space-y-3">
-              <RefundGuaranteeCallout variant="modal" />
               <Button
                 className="min-h-16 w-full text-lg font-bold shadow-[0_0_32px_rgba(16,185,129,0.25)]"
                 onClick={handleCheckout}
