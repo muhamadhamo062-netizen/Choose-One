@@ -117,14 +117,24 @@ export function AppHeader({ initialAuthed }: AppHeaderProps) {
               </button>
             </>
           ) : (
-            <Link
-              href="/signup"
-              className={cn(
-                "inline-flex min-h-9 min-w-[5.5rem] items-center justify-center rounded-lg border border-slate-600 bg-slate-900/50 px-3 py-1.5 text-sm font-medium text-slate-200 transition-colors hover:border-slate-500 hover:text-white"
-              )}
-            >
-              Login
-            </Link>
+            <>
+              <Link
+                href="/login"
+                className={cn(
+                  "inline-flex min-h-9 items-center justify-center rounded-lg border border-slate-600 bg-slate-900/50 px-3 py-1.5 text-sm font-medium text-slate-200 transition-colors hover:border-slate-500 hover:text-white"
+                )}
+              >
+                Sign in
+              </Link>
+              <Link
+                href="/signup"
+                className={cn(
+                  "inline-flex min-h-9 items-center justify-center rounded-lg border border-primary/40 bg-primary/15 px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:border-primary/70 hover:bg-primary/20"
+                )}
+              >
+                Sign up
+              </Link>
+            </>
           )}
         </div>
       </div>

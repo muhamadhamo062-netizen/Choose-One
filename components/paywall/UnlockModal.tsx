@@ -22,30 +22,26 @@ import { CORE_PRODUCT_COPY as COPY } from "@/lib/product-messaging";
 import type { UnlockSource } from "@/hooks/useUnlockModal";
 
 const PW = COPY.paywall;
-const PADDLE_SCRIPT_SRC = "https://cdn.paddle.com/paddle/v2/paddle.js";
-const PADDLE_SCRIPT_ATTR = "data-pe-paddle-v2";
+const LEMON_SCRIPT_SRC = "https://assets.lemonsqueezy.com/lemon.js";
+const LEMON_SCRIPT_ATTR = "data-pe-lemon-squeezy";
 
-function getEnvMode(): "sandbox" | "production" {
-  const mode = process.env.NEXT_PUBLIC_PADDLE_ENV;
-  return mode === "production" ? "production" : "sandbox";
-}
+async function ensureLemonSqueezy(): Promise<boolean> {
+  if (typeof window === "undefined") {
+    return false;
+  }
 
-async function ensurePaddle(): Promise<NonNullable<Window["Paddle"]> | null> {
-  if (typeof window === "undefined") return null;
-  if (window.Paddle) return window.Paddle;
-
-  const existing = document.querySelector(`script[${PADDLE_SCRIPT_ATTR}]`) as HTMLScriptElement | null;
+  const existing = document.querySelector(`script[${LEMON_SCRIPT_ATTR}]`) as HTMLScriptElement | null;
   if (!existing) {
     const s = document.createElement("script");
-    s.src = PADDLE_SCRIPT_SRC;
+    s.src = LEMON_SCRIPT_SRC;
     s.async = true;
-    s.setAttribute(PADDLE_SCRIPT_ATTR, "1");
+    s.setAttribute(LEMON_SCRIPT_ATTR, "1");
     document.body.appendChild(s);
   }
 
   await new Promise<void>((resolve) => {
     const check = () => {
-      if (window.Paddle) {
+      if (window.LemonSqueezy) {
         resolve();
         return;
       }
@@ -53,7 +49,8 @@ async function ensurePaddle(): Promise<NonNullable<Window["Paddle"]> | null> {
     };
     check();
   });
-  return window.Paddle ?? null;
+  window.createLemonSqueezy?.();
+  return Boolean(window.LemonSqueezy);
 }
 
 function sleep(ms: number): Promise<void> {
@@ -62,26 +59,16 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function parseCheckoutTransactionId(event: unknown): string | null {
+function parseCheckoutOrderId(event: unknown): string | null {
   if (!event || typeof event !== "object") {
     return null;
   }
-  const d = (event as { data?: unknown }).data;
-  if (!d || typeof d !== "object") {
+  const name = (event as { event?: string }).event;
+  if (name !== "Checkout.Success") {
     return null;
   }
-  const o = d as Record<string, unknown>;
-  if (typeof o.transaction_id === "string") {
-    return o.transaction_id;
-  }
-  if (typeof o.id === "string") {
-    return o.id;
-  }
-  const t = o.transaction;
-  if (t && typeof t === "object" && typeof (t as { id?: string }).id === "string") {
-    return (t as { id: string }).id;
-  }
-  return null;
+  const id = (event as { data?: { id?: string } }).data?.id;
+  return typeof id === "string" && id.length > 0 ? id : null;
 }
 
 type PollResult =
@@ -89,16 +76,15 @@ type PollResult =
   | { ok: false; error: "not_configured" | "rejected" | "timeout" };
 
 /**
- * Real entitlement is written by the Paddle webhook. Poll until the subscription row exists, then the session
- * route sets the cookie (200). No client-trusted success paths.
+ * Entitlement is written by the Lemon Squeezy webhook. Poll until subscription exists, then session cookie.
  */
-async function pollSessionFromTransaction(transactionId: string): Promise<PollResult> {
+async function pollSessionFromOrder(orderId: string): Promise<PollResult> {
   for (let i = 0; i < 40; i += 1) {
-    const res = await fetch("/api/user/session-from-transaction", {
+    const res = await fetch("/api/user/session-from-order", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ transactionId })
+      body: JSON.stringify({ orderId })
     });
     if (res.ok) {
       const body = (await res.json()) as { user?: { id: string; email: string; fullName: string | null } };
@@ -117,6 +103,31 @@ async function pollSessionFromTransaction(transactionId: string): Promise<PollRe
     return { ok: false, error: "rejected" };
   }
   return { ok: false, error: "timeout" };
+}
+
+function buildClientCheckoutUrl(email?: string, publicScanId?: string): string | null {
+  const direct = process.env.NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL?.trim();
+  const variantId = process.env.NEXT_PUBLIC_LEMON_SQUEEZY_VARIANT_ID?.trim();
+  const storeSlug = process.env.NEXT_PUBLIC_LEMON_SQUEEZY_STORE_SLUG?.trim();
+  let url: URL;
+  if (direct) {
+    try {
+      url = new URL(direct);
+    } catch {
+      return null;
+    }
+  } else if (variantId && storeSlug) {
+    url = new URL(`https://${storeSlug}.lemonsqueezy.com/checkout/buy/${variantId}`);
+  } else {
+    return null;
+  }
+  if (email) {
+    url.searchParams.set("checkout[email]", email);
+  }
+  if (publicScanId) {
+    url.searchParams.set("checkout[custom][public_scan_id]", publicScanId);
+  }
+  return url.toString();
 }
 
 interface UnlockModalProps {
@@ -171,7 +182,11 @@ export function UnlockModal({ isOpen, source, onClose }: UnlockModalProps) {
   }, [isOpen, source]);
 
   const canCheckout = useMemo(() => {
-    return Boolean(process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN && process.env.NEXT_PUBLIC_PADDLE_PRICE_ID);
+    return Boolean(
+      process.env.NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL?.trim() ||
+        (process.env.NEXT_PUBLIC_LEMON_SQUEEZY_VARIANT_ID?.trim() &&
+          process.env.NEXT_PUBLIC_LEMON_SQUEEZY_STORE_SLUG?.trim())
+    );
   }, []);
 
   const paymentSystemBlocked =
@@ -179,64 +194,49 @@ export function UnlockModal({ isOpen, source, onClose }: UnlockModalProps) {
   const canOpenCheckout = canCheckout && !paymentSystemBlocked;
 
   const handleCheckout = async () => {
-    const token = process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN;
-    const priceId = process.env.NEXT_PUBLIC_PADDLE_PRICE_ID;
-    if (!token || !priceId) return;
-
     setBusy(true);
-    setUserState(UserState.CHECKOUT_STARTED, "paddle_checkout_start");
+    setUserState(UserState.CHECKOUT_STARTED, "lemon_squeezy_checkout_start");
     trackEvent({ name: "paywall_cta_clicked", source });
-    {
-      const dims = getScanAnalyticsDimensions();
-      trackEvent({ name: "payment_started", source, ...dims });
-    }
+    const dims = getScanAnalyticsDimensions();
+    trackEvent({ name: "payment_started", source, ...dims });
 
     try {
-      const paddle = await ensurePaddle();
-      if (!paddle) return;
+      const ready = await ensureLemonSqueezy();
+      if (!ready || !window.LemonSqueezy) {
+        setCheckoutError("Checkout could not load. Refresh and try again.");
+        return;
+      }
 
-      paddle.Environment.set(getEnvMode());
+      const email = localStorage.getItem(STORAGE_LEAD_EMAIL) ?? undefined;
+      const scanId = getLatestScanSession()?.scanId?.trim();
+      const checkoutUrl = buildClientCheckoutUrl(email, scanId);
+      if (!checkoutUrl) {
+        setCheckoutError("Checkout is not configured. Contact support.");
+        return;
+      }
+
       if (!initializedRef.current) {
         const fail = (reason: string) => {
           const eventSource = latestSourceRef.current;
-          const dims = getScanAnalyticsDimensions();
-          trackEvent({ name: "payment_failed", source: eventSource, reason, ...dims });
+          const d = getScanAnalyticsDimensions();
+          trackEvent({ name: "payment_failed", source: eventSource, reason, ...d });
         };
 
-        paddle.Initialize({
-          token,
-          eventCallback: (event) => {
-            const name = (event as { name?: string }).name;
-            if (
-              name === "checkout.error" ||
-              name === "checkout.payment.error" ||
-              name === "checkout.payment.failed"
-            ) {
-              fail("checkout_error");
-              setCheckoutError(
-                "We couldn’t complete payment. If you were charged, contact support with your email — your access is issued after our server confirms the payment."
-              );
+        window.LemonSqueezy.Setup({
+          eventHandler: (event) => {
+            if (event.event !== "Checkout.Success") {
               return;
             }
-
-            if (name !== "checkout.completed") {
-              return;
-            }
-
             const eventSource = latestSourceRef.current;
-            const transactionId = parseCheckoutTransactionId(event);
-            if (!transactionId) {
-              fail("no_transaction_id");
-              setCheckoutError(
-                "We couldn’t confirm the transaction. If payment went through, wait a moment and use Check status from your account email, or contact support."
-              );
+            const orderId = parseCheckoutOrderId(event);
+            if (!orderId) {
+              fail("no_order_id");
+              setCheckoutError("We couldn’t confirm your order. Contact support if you were charged.");
               return;
             }
-
             void (async () => {
-              const dims = getScanAnalyticsDimensions();
               try {
-                const result = await pollSessionFromTransaction(transactionId);
+                const result = await pollSessionFromOrder(orderId);
                 if (result.ok) {
                   clearCheckoutStarted("payment_completed");
                   trackEvent({ name: "payment_completed", source: eventSource, ...dims });
@@ -249,9 +249,7 @@ export function UnlockModal({ isOpen, source, onClose }: UnlockModalProps) {
                   } catch {
                     // ignore
                   }
-                  void syncClientStateToServer().catch(() => {
-                    // ignore
-                  });
+                  void syncClientStateToServer().catch(() => undefined);
                   onClose();
                   router.push("/dashboard");
                   return;
@@ -264,11 +262,11 @@ export function UnlockModal({ isOpen, source, onClose }: UnlockModalProps) {
                 if (result.error === "timeout") {
                   fail("webhook_fulfillment_timeout");
                   setCheckoutError(
-                    "We haven’t received payment confirmation on our server yet. Your bank may have charged you — if so, try again in a few minutes or contact support. We never grant access until our server records your payment."
+                    "We haven’t received payment confirmation yet. If you were charged, wait a minute and try again or contact support."
                   );
                   return;
                 }
-                fail("session_from_transaction_rejected");
+                fail("session_from_order_rejected");
                 setCheckoutError("Could not start your session. Contact support if payment succeeded.");
               } catch {
                 fail("poll_exception");
@@ -280,20 +278,7 @@ export function UnlockModal({ isOpen, source, onClose }: UnlockModalProps) {
         initializedRef.current = true;
       }
 
-      const email = localStorage.getItem(STORAGE_LEAD_EMAIL) ?? undefined;
-      const openPayload: {
-        items: { priceId: string; quantity: number }[];
-        customer?: { email: string };
-        customData?: { public_scan_id: string };
-      } = {
-        items: [{ priceId, quantity: 1 }],
-        customer: email ? { email } : undefined
-      };
-      const ps = getLatestScanSession()?.scanId?.trim();
-      if (ps) {
-        openPayload.customData = { public_scan_id: ps };
-      }
-      paddle.Checkout.open(openPayload);
+      window.LemonSqueezy.Url.Open(checkoutUrl);
     } finally {
       setBusy(false);
     }
@@ -390,13 +375,14 @@ export function UnlockModal({ isOpen, source, onClose }: UnlockModalProps) {
               </Link>
               {paymentSystemBlocked ? (
                 <p className="mt-2 text-center text-xs text-danger" role="alert">
-                  Payment system not active in production. Set `DATABASE_URL`, `PADDLE_WEBHOOK_SECRET`, and
-                  point Paddle&apos;s webhook to <span className="whitespace-nowrap">/api/webhooks/paddle</span>.
+                  Payment system not active. Set `DATABASE_URL`, `LEMON_SQUEEZY_WEBHOOK_SECRET`, and point Lemon
+                  Squeezy webhooks to <span className="whitespace-nowrap">/api/webhooks/lemon-squeezy</span>.
                 </p>
               ) : null}
               {!canCheckout && (
                 <p className="mt-2 text-center text-xs text-danger">
-                  Missing Paddle env vars: `NEXT_PUBLIC_PADDLE_CLIENT_TOKEN` / `NEXT_PUBLIC_PADDLE_PRICE_ID`
+                  Missing Lemon Squeezy checkout env: `NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL` or store slug +
+                  variant id
                 </p>
               )}
             </div>

@@ -5,6 +5,9 @@ import { getAuthEnvIssue, runAuthDb } from "@/lib/auth-db";
 import { logPrismaConnectionError } from "@/lib/logPrismaConnectionError";
 import { jsonServiceDegraded } from "@/lib/api-response";
 import { sendAuthOtpEmail } from "@/lib/email";
+import { normalizeAuthEmail } from "@/lib/normalize-auth-email";
+import { findUserByAuthEmail } from "@/lib/find-user-by-auth-email";
+import { attachOrphanScanToUser } from "@/lib/attach-orphan-scan";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -21,18 +24,13 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const email = typeof body.email === "string" ? normalizeAuthEmail(body.email) : "";
   const password = typeof body.password === "string" ? body.password : "";
   if (!email || !password) {
     return NextResponse.json({ error: "invalid_credentials" }, { status: 400 });
   }
 
-  const userRes = await runAuthDb((db) =>
-    db.user.findUnique({
-      where: { email },
-      select: { id: true, email: true, fullName: true, passwordHash: true }
-    })
-  );
+  const userRes = await runAuthDb((db) => findUserByAuthEmail(db, email));
 
   if (!userRes.ok) {
     logPrismaConnectionError("auth/login", new Error("user_find_failed"));
@@ -50,16 +48,33 @@ export async function POST(request: Request) {
 
   const user = userRes.value;
   if (!user) {
-    return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
+    return NextResponse.json({ error: "invalid_credentials", reason: "user_not_found" }, { status: 401 });
   }
 
   if (!user.passwordHash) {
-    return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
+    return NextResponse.json(
+      {
+        error: "password_not_set",
+        reason: "paid_without_password",
+        message:
+          "This email has an account from checkout but no password yet. Create a password on Sign up with the same email, or contact support."
+      },
+      { status: 401 }
+    );
   }
 
   const passwordOk = await compare(password, user.passwordHash);
   if (!passwordOk) {
-    return NextResponse.json({ error: "invalid_credentials" }, { status: 401 });
+    return NextResponse.json(
+      {
+        error: "invalid_credentials",
+        reason: "wrong_password",
+        canSetPassword: true,
+        message:
+          "Wrong password. If you paid before, your account may not use the password you chose — set a new one from Sign up → set password."
+      },
+      { status: 401 }
+    );
   }
 
   let token: string;
@@ -69,6 +84,8 @@ export async function POST(request: Request) {
     logPrismaConnectionError("auth/login:session", e);
     return jsonServiceDegraded("session_not_configured");
   }
+
+  void attachOrphanScanToUser({ userId: user.id, email: user.email });
 
   void sendAuthOtpEmail(user.email, "login");
   const res = NextResponse.json({

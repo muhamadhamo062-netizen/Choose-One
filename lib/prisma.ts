@@ -1,4 +1,5 @@
 import { PrismaClient } from "@prisma/client";
+import { deriveTransactionPoolerUrl } from "@/lib/supabase-pg-url";
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
@@ -14,9 +15,12 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const databaseUrl = deriveTransactionPoolerUrl(process.env.DATABASE_URL?.trim() ?? "");
+
 const prismaClient =
   globalForPrisma.prisma ??
   new PrismaClient({
+    datasources: databaseUrl ? { db: { url: databaseUrl } } : undefined,
     log: process.env.NODE_ENV === "development" ? ["error", "warn"] : ["error"]
   });
 

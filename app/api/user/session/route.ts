@@ -7,6 +7,8 @@ import { getSession, getUserFromSession } from "@/lib/auth-session";
 import { jsonServiceDegraded, jsonUnauthorized } from "@/lib/api-response";
 import { safeDbResult } from "@/lib/safe-db";
 import { isActiveLifetimeSubscription, resolveDashboardScansRemaining } from "@/lib/lifetime-scan-quota";
+import { attachOrphanScanToUser } from "@/lib/attach-orphan-scan";
+import { PENDING_SCAN_COOKIE } from "@/lib/auth-cookies";
 
 export const dynamic = "force-dynamic";
 
@@ -112,8 +114,28 @@ export async function GET() {
   }
 
   const billingRow = billingRes.value;
-  const scan = scanRes.value;
+  let scan = scanRes.value;
   const removalJobs = removalJobsRes.value;
+
+  if (!scan) {
+    const pendingScanId = cookies().get(PENDING_SCAN_COOKIE)?.value?.trim() ?? null;
+    const linkedId = await attachOrphanScanToUser({
+      userId: user.id,
+      email: user.email,
+      publicScanId: pendingScanId
+    });
+    if (linkedId) {
+      const again = await safeDbResult(() =>
+        prisma.scan.findFirst({
+          where: { userId: user.id },
+          orderBy: { createdAt: "desc" }
+        })
+      );
+      if (again.ok && again.value) {
+        scan = again.value;
+      }
+    }
+  }
 
   const dashboardState = computeServerDashboardState(scan, billingRow);
   const brokerSourceNames = extractBrokerNames(scan?.discoveryJson);

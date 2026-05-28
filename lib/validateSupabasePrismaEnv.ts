@@ -67,7 +67,7 @@ export function getSupabasePrismaEnvErrors(): string[] {
       "DATABASE_URL must use either *.pooler.supabase.com (preferred Transaction URL) or db.<project-ref>.supabase.co (direct fallback)"
     );
   }
-  if (dbUrlIsPooler && !/:6543[/?#]/.test(du) && !/:6543"/.test(du)) {
+  if (dbUrlIsPooler && !/:6543[/?#]/.test(du) && !/:6543"/.test(du) && !/\.pooler\.supabase\.com\/[^?#]/i.test(du)) {
     out.push("DATABASE_URL pooler mode must use port 6543 (Supabase connection pooling → Transaction mode)");
   }
   if (dbUrlIsDirectHost && !/:5432[/?#]/.test(du) && !/:5432"/.test(du)) {

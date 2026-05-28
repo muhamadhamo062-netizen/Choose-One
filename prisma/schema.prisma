@@ -80,13 +80,13 @@ model Subscription {
   plan                String
   status              String
   startedAt           DateTime @default(now()) @map("started_at")
-  // Set when created from Paddle; used to issue session only after server-verified payment.
+  // Lemon Squeezy order id (legacy DB column name: paddle_transaction_id).
   paddleTransactionId String?  @unique @map("paddle_transaction_id")
 
   @@index([userId, status])
 }
 
-/// One row per `event_id` from Paddle (idempotency for webhooks).
+/// One row per billing webhook event id (idempotency; legacy table name).
 model ProcessedPaddleEvent {
   eventId   String   @id @map("event_id")
   createdAt DateTime @default(now()) @map("created_at")

@@ -17,7 +17,11 @@ function isPublicApiPath(pathname: string): boolean {
   if (pathname === "/api/user/create") {
     return true;
   }
-  if (pathname === "/api/user/session-from-transaction" || pathname === "/api/user/complete-purchase") {
+  if (
+    pathname === "/api/user/session-from-transaction" ||
+    pathname === "/api/user/session-from-order" ||
+    pathname === "/api/user/complete-purchase"
+  ) {
     return true;
   }
   if (pathname === "/api/events") {
@@ -84,7 +88,9 @@ export function middleware(request: NextRequest) {
 
   if (isDashboardPath(pathname)) {
     if (!cookie) {
-      return NextResponse.redirect(new URL("/signup", request.url));
+      const login = new URL("/login", request.url);
+      login.searchParams.set("next", pathname);
+      return NextResponse.redirect(login);
     }
     return NextResponse.next();
   }

@@ -12,7 +12,7 @@ export default function AffiliateLoginPage() {
       <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
         <h1 className="text-xl font-bold text-white">Affiliate Program</h1>
         <p className="mt-3 text-sm text-slate-300">
-          Affiliate access is now managed externally via Paddle Affiliates.
+          Affiliate access is now managed externally via Lemon Squeezy Affiliates.
         </p>
         <p className="mt-2 text-sm text-slate-400">
           Please use your Paddle affiliate portal to get links, track commissions, and payouts.

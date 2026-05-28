@@ -13,10 +13,10 @@ import { CORE_PRODUCT_COPY as COPY } from "@/lib/product-messaging";
 
 const PR = COPY.paywall;
 
-const PADDLE_VENDOR_SCRIPT = "https://cdn.paddle.com/paddle/paddle.js";
-const SCRIPT_DATA_ATTR = "data-paddle-loader";
+const LEMON_SCRIPT = "https://assets.lemonsqueezy.com/lemon.js";
+const SCRIPT_DATA_ATTR = "data-lemon-squeezy-loader";
 
-function usePaddleScript(): void {
+function useLemonSqueezyScript(): void {
   useEffect(() => {
     if (typeof document === "undefined") {
       return;
@@ -25,7 +25,7 @@ function usePaddleScript(): void {
       return;
     }
     const s = document.createElement("script");
-    s.src = PADDLE_VENDOR_SCRIPT;
+    s.src = LEMON_SCRIPT;
     s.async = true;
     s.setAttribute(SCRIPT_DATA_ATTR, "1");
     document.body.appendChild(s);
@@ -34,7 +34,7 @@ function usePaddleScript(): void {
 
 export function PricingSection() {
   const { openModal } = useUnlockModal();
-  usePaddleScript();
+  useLemonSqueezyScript();
   const [deadlineMs, setDeadlineMs] = useState<number | null>(null);
   const [nowTick, setNowTick] = useState(Date.now());
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +18,8 @@ import { syncClientStateToServer } from "@/lib/server-state-sync";
 import { useGlobalUserState } from "@/lib/useGlobalUserState";
 import { CORE_PRODUCT_COPY as COPY } from "@/lib/product-messaging";
 import { getSupabaseDatabaseSettingsUrl } from "@/lib/supabase-dashboard-link";
+import { getLatestScanSession } from "@/lib/scan-session";
+import { normalizeAuthEmail } from "@/lib/normalize-auth-email";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -53,7 +56,7 @@ function isSupabaseEnvSetupError(error: string | undefined): boolean {
 
 /** API may return `error: service_unavailable` with a specific `reason`. */
 function apiErrKey(j: { error?: string; reason?: string }): string | undefined {
-  if (j.reason && j.reason !== "database_unavailable") {
+  if (j.reason) {
     return j.reason;
   }
   return j.error;
@@ -67,7 +70,7 @@ export function SignupForm() {
   const fromPayment = from === "payment";
   const fromScan = from === "scan";
   const fromReferral = from === "referral";
-
+  const setPasswordMode = searchParams.get("setPassword") === "1";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -101,17 +104,27 @@ export function SignupForm() {
     } catch {
       // ignore
     }
-    if (lead) {
-      setEmail(lead);
+    const fromQuery = searchParams.get("email")?.trim() ?? "";
+    if (fromQuery) {
+      setEmail(normalizeAuthEmail(fromQuery));
+    } else if (lead) {
+      setEmail(normalizeAuthEmail(lead));
     }
     setReady(true);
-  }, [fromPayment, fromReferral, fromScan]);
+  }, [fromPayment, fromReferral, fromScan, searchParams]);
+
+  useEffect(() => {
+    if (searchParams.get("signin") === "1") {
+      router.replace("/login");
+    }
+  }, [router, searchParams]);
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErr(null);
     setErrCode(null);
-    if (!EMAIL_RE.test(email.trim())) {
+    const raw = normalizeAuthEmail(email);
+    if (!EMAIL_RE.test(raw)) {
       setErr("Enter a valid email");
       return;
     }
@@ -120,7 +133,6 @@ export function SignupForm() {
       return;
     }
     setPending(true);
-    const raw = email.trim().toLowerCase();
     const refParam = (searchParams.get("ref") ?? "").trim().toUpperCase();
     let refRaw = refParam;
     if (!refRaw) {
@@ -131,51 +143,43 @@ export function SignupForm() {
       }
     }
     void (async () => {
-      const tryLoginFallback = async () => {
-        let loginRes: Response;
-        try {
-          loginRes = await fetch("/api/auth/login", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ email: raw, password })
-          });
-        } catch {
-          return false;
-        }
-        const lj = (await loginRes.json().catch(() => ({}))) as {
-          ok?: boolean;
-          user?: { id: string; email: string; fullName?: string | null };
-        };
-        if (!loginRes.ok || lj.ok === false || !lj.user) {
-          return false;
-        }
+      const finishSuccess = () => {
         try {
           window.localStorage.setItem(STORAGE_LEAD_EMAIL, raw);
+          if (refRaw.startsWith("PE-") && refRaw.length >= 6) {
+            window.localStorage.removeItem(STORAGE_PENDING_REFERRAL);
+          }
         } catch {
           // ignore
         }
-        clearSignupPending("login_fallback_success");
-        pushGlobalStateChange("post_login", true);
-        void syncClientStateToServer().catch(() => {
-          // ignore
-        });
+        clearSignupPending(setPasswordMode ? "set_password" : "signup_success");
+        if (fromPayment) {
+          pushGlobalStateChange("post_signup_paid", true);
+        } else {
+          pushGlobalStateChange("post_signup_free");
+        }
+        void syncClientStateToServer().catch(() => undefined);
+        setPending(false);
         router.push("/dashboard");
-        return true;
       };
 
       let res: Response;
-      try {
-        res = await fetch("/api/user/create", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
+      const apiUrl = setPasswordMode ? "/api/auth/set-password" : "/api/user/create";
+      const apiBody = setPasswordMode
+        ? { email: raw, password }
+        : {
             email: raw,
             password,
             fullName: raw.split("@")[0] || "Member",
-            activateLifetime: fromPayment
-          })
+            activateLifetime: fromPayment,
+            scanId: getLatestScanSession()?.scanId?.trim() || undefined
+          };
+      try {
+        res = await fetch(apiUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify(apiBody)
         });
       } catch {
         setErrCode(null);
@@ -199,91 +203,14 @@ export function SignupForm() {
         return;
       }
       if (!res.ok) {
+        if (setPasswordMode && res.status === 404) {
+          setErr("لا يوجد حساب بهذا الإيميل. اعمل فحص أو ادفع أولاً، ثم اضبط كلمة المرور.");
+          setPending(false);
+          return;
+        }
         if (res.status === 409 && j.error === "email_in_use") {
-          let loginRes: Response;
-          try {
-            loginRes = await fetch("/api/auth/login", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({ email: raw, password })
-            });
-          } catch {
-            setErrCode(null);
-            setErr("Could not reach the server. Check your connection and try again.");
-            setPending(false);
-            return;
-          }
-          const lj = (await loginRes.json().catch(() => ({}))) as {
-            ok?: boolean;
-            error?: string;
-            reason?: string;
-            message?: string;
-            user?: { id: string; email: string; fullName?: string | null };
-          };
-          if (loginRes.ok && lj.ok !== false && lj.user) {
-            try {
-              window.localStorage.setItem(STORAGE_LEAD_EMAIL, raw);
-            } catch {
-              // ignore
-            }
-            clearSignupPending("login_success");
-            pushGlobalStateChange("post_login", true);
-            trackEvent({
-              name: "login_completed",
-              source: "signup_form_email_in_use",
-              acquisition_source: getAcquisitionSource(),
-              scanId: ""
-            });
-            void syncClientStateToServer().catch(() => {
-              // ignore
-            });
-            setPending(false);
-            window.setTimeout(() => {
-              router.push("/dashboard");
-            }, 200);
-            return;
-          }
-          if (loginRes.ok && lj.ok === false) {
-            const loginKey = apiErrKey(lj);
-            setErrCode(loginKey ?? null);
-            setErr(
-              loginKey === "temporary_unavailable" ||
-                lj.error === "service_unavailable" ||
-                lj.reason === "database_unavailable"
-                ? signupApiErrorMessage(loginKey ?? "temporary_unavailable")
-                : signupApiErrorMessage(loginKey) || lj.message || "Could not sign in. Try again in a moment."
-            );
-            setPending(false);
-            return;
-          }
-          if (loginRes.status === 401) {
-            setErrCode(null);
-            setErr(
-              "This email is already registered. Enter the password you used before to sign in on this device."
-            );
-            setPending(false);
-            return;
-          }
-          if (loginRes.status === 503) {
-            if (lj.reason === "supabase_paste_required" || lj.reason === "database_not_configured") {
-              setErrCode(
-                lj.reason === "database_not_configured" ? "database_not_configured" : "supabase_paste_required"
-              );
-              setErr("");
-            } else {
-              setErrCode(null);
-              setErr(
-                lj.reason === "database_unavailable"
-                  ? signupApiErrorMessage("temporary_unavailable")
-                  : "Service temporarily unavailable. Try again in a moment."
-              );
-            }
-            setPending(false);
-            return;
-          }
-          setErrCode(null);
-          setErr("Could not sign in. Try again or reset your password if the product supports it.");
+          setErrCode("email_in_use");
+          setErr("This email already has an account. Sign in with your existing password.");
           setPending(false);
           return;
         }
@@ -293,50 +220,25 @@ export function SignupForm() {
         return;
       }
       if (j.ok === false || !j.user) {
-        if (
-          errKey === "service_unavailable" ||
-          errKey === "temporary_unavailable" ||
-          errKey === "create_failed"
-        ) {
-          const loggedIn = await tryLoginFallback();
-          if (loggedIn) {
-            setPending(false);
-            return;
-          }
-        }
         setErrCode(errKey ?? null);
         setErr(signupApiErrorMessage(errKey));
         setPending(false);
         return;
       }
-      try {
-        window.localStorage.setItem(STORAGE_LEAD_EMAIL, raw);
-        if (refRaw.startsWith("PE-") && refRaw.length >= 6) {
-          window.localStorage.removeItem(STORAGE_PENDING_REFERRAL);
-        }
-      } catch {
-        // ignore
-      }
-      clearSignupPending("signup_success");
-      if (fromPayment) {
-        pushGlobalStateChange("post_signup_paid", true);
-      } else {
-        pushGlobalStateChange("post_signup_free");
-      }
-      const source = fromPayment ? "post_payment" : fromScan ? "scan" : "organic";
+      const source = setPasswordMode
+        ? "set_password"
+        : fromPayment
+          ? "post_payment"
+          : fromScan
+            ? "scan"
+            : "organic";
       trackEvent({
-        name: "signup_completed",
+        name: setPasswordMode ? "password_set" : "signup_completed",
         source,
         acquisition_source: getAcquisitionSource(),
         scanId: j.scanId ?? ""
       });
-      void syncClientStateToServer().catch(() => {
-        // ignore
-      });
-      setPending(false);
-      window.setTimeout(() => {
-        router.push("/dashboard");
-      }, 200);
+      finishSuccess();
     })();
   };
 
@@ -344,18 +246,25 @@ export function SignupForm() {
     return <div className="h-64 animate-pulse rounded-2xl bg-slate-800/50" />;
   }
 
-  const headline = fromPayment
-    ? "After checkout"
-    : fromScan
-      ? "After your scan"
-      : fromReferral
-        ? "Referral bonus"
-        : "Create your account";
+  const headline = setPasswordMode
+    ? "Set your password"
+    : fromPayment
+      ? "After checkout"
+      : fromScan
+        ? "After your scan"
+        : fromReferral
+          ? "Referral bonus"
+          : "Create your account";
 
   return (
     <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
       <Card className="p-5 sm:p-7">
         <p className="mb-0.5 text-center text-sm font-medium text-slate-500">{headline}</p>
+        {setPasswordMode && (
+          <p className="mt-2 text-center text-xs leading-relaxed text-slate-400">
+            نفس إيميل الفحص أو الدفع. اختر كلمة مرور جديدة — تدخل الداشبورد مباشرة.
+          </p>
+        )}
         <form onSubmit={onSubmit} className="mt-4 space-y-3 sm:space-y-4" noValidate>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-slate-300" htmlFor="su-email">
@@ -366,6 +275,7 @@ export function SignupForm() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+              onBlur={() => setEmail((v) => normalizeAuthEmail(v))}
               className="w-full min-h-11 rounded-xl border border-slate-700 bg-slate-950/80 px-4 py-3 text-base text-white placeholder:text-slate-500 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/25"
               autoComplete="email"
               inputMode="email"
@@ -386,6 +296,20 @@ export function SignupForm() {
             />
             <p className="mt-1.5 text-xs text-slate-500">At least 8 characters. Stored securely (bcrypt) on the server.</p>
           </div>
+          {errCode === "email_in_use" && (
+            <p className="text-sm text-slate-300">
+              <Link href="/login" className="font-medium text-primary underline underline-offset-2">
+                Sign in here
+              </Link>{" "}
+              instead of creating a new account.
+            </p>
+          )}
+          <p className="text-center text-sm text-slate-400">
+            Already have an account?{" "}
+            <Link href="/login" className="font-medium text-primary underline underline-offset-2">
+              Sign in
+            </Link>
+          </p>
           {isSupabaseEnvSetupError(errCode ?? undefined) && (
             <div
               className="rounded-xl border border-amber-600/50 bg-amber-950/40 px-4 py-3 text-sm text-amber-100/95"
@@ -420,7 +344,15 @@ export function SignupForm() {
           )}
           {err && <p className="text-sm text-danger">{err}</p>}
           <Button type="submit" className="min-h-12 w-full text-base" disabled={pending} aria-busy={pending}>
-            {pending ? "Securing your account…" : fromPayment || fromScan ? "Open dashboard" : "Create account"}
+            {pending
+              ? setPasswordMode
+                ? "Saving…"
+                : "Securing your account…"
+              : setPasswordMode
+                ? "Save password & open dashboard"
+                : fromPayment || fromScan
+                  ? "Open dashboard"
+                  : "Create account"}
           </Button>
         </form>
       </Card>

@@ -55,7 +55,7 @@ export default function PrivacyPage() {
           appropriate confidentiality and security obligations, unless law requires otherwise.
         </p>
         <p>
-          Payment processing (for example, a processor like Paddle) is handled by the processor’s own terms and privacy
+          Payment processing (for example, a processor like Lemon Squeezy) is handled by the processor’s own terms and privacy
           policy for payment data that they process on your behalf. We do not store full payment card details on our servers
           when your processor is responsible for cardholder data in accordance with its documentation.
         </p>

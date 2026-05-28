@@ -12,16 +12,16 @@ type Body = {
 };
 
 /**
- * DEV / STAGING ONLY: unverified post-checkout (no paddleTransactionId).
- * Production: use Paddle webhook + POST /api/user/session-from-transaction.
+ * DEV / STAGING ONLY: unverified post-checkout (no billing order id).
+ * Production: Lemon Squeezy webhook + POST /api/user/session-from-order.
  */
 export async function POST(request: Request) {
   if (!allowUnverifiedCompletePurchase()) {
     return NextResponse.json(
       {
         error: "unverified_checkout_not_allowed",
-        state: "USE_WEBHOOK_AND_SESSION_FROM_TRANSACTION",
-        detail: "Use Paddle webhooks and POST /api/user/session-from-transaction in production"
+        state: "USE_WEBHOOK_AND_SESSION_FROM_ORDER",
+        detail: "Use Lemon Squeezy webhooks and POST /api/user/session-from-order in production"
       },
       { status: 200 }
     );
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
     const userRow = await fulfillLifetimeEntitlement({
       email,
       linkPublicScanId: linkScanId,
-      paddleTransactionId: null
+      billingOrderId: null
     });
 
     const token = await signSessionToken(userRow.userId);

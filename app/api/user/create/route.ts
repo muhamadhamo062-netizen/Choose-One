@@ -10,6 +10,9 @@ import { hashSensitiveValue, maskEmail } from "@/lib/privacy-safe";
 import { safeDbResult } from "@/lib/safe-db";
 import { jsonServiceDegraded } from "@/lib/api-response";
 import { sendAuthOtpEmail } from "@/lib/email";
+import { attachOrphanScanToUser } from "@/lib/attach-orphan-scan";
+import { normalizeAuthEmail } from "@/lib/normalize-auth-email";
+import { findUserByAuthEmail } from "@/lib/find-user-by-auth-email";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -34,7 +37,7 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
-  const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+  const email = typeof body.email === "string" ? normalizeAuthEmail(body.email) : "";
   const password = typeof body.password === "string" ? body.password : "";
   const fullName = typeof body.fullName === "string" ? body.fullName.trim() : email.split("@")[0] || "Member";
 
@@ -45,12 +48,41 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "weak_password" }, { status: 400 });
   }
 
-  const existingRes = await runAuthDb((db) => db.user.findUnique({ where: { email }, select: { id: true } }));
+  const existingRes = await runAuthDb((db) => findUserByAuthEmail(db, email));
   if (!existingRes.ok) {
     logPrismaConnectionError("user/create:lookup", new Error("db_lookup_failed"));
     return jsonServiceDegraded("database_unavailable");
   }
   if (existingRes.value) {
+    const existing = existingRes.value;
+    if (!existing.passwordHash) {
+      const passwordHash = await hash(password, 12);
+      const setPw = await runAuthDb((db) =>
+        db.user.update({
+          where: { id: existing.id },
+          data: { passwordHash, fullName: fullName || existing.fullName }
+        })
+      );
+      if (!setPw.ok) {
+        return jsonServiceDegraded("database_unavailable");
+      }
+      let token: string;
+      try {
+        token = await signSessionToken(existing.id);
+      } catch (e) {
+        logPrismaConnectionError("user/create:set_password", e);
+        return jsonServiceDegraded("session_not_configured");
+      }
+      const res = NextResponse.json({
+        ok: true,
+        user: { id: existing.id, email: existing.email, fullName: fullName || existing.fullName },
+        linkedScan: false,
+        scanId: "",
+        passwordSet: true
+      });
+      res.cookies.set(SESSION_COOKIE, token, sessionCookieOptions());
+      return res;
+    }
     return NextResponse.json({ error: "email_in_use" }, { status: 409 });
   }
 
@@ -101,6 +133,17 @@ export async function POST(request: Request) {
 
   const { u: user, linkedScan: linkedFromTx } = txRes.value;
   let linkedScan = linkedFromTx;
+
+  if (!linkedScan) {
+    const attached = await attachOrphanScanToUser({
+      userId: user.id,
+      email: user.email,
+      publicScanId: linkScanId || null
+    });
+    if (attached) {
+      linkedScan = true;
+    }
+  }
 
   if (linkScanId) {
     const linkRes = await safeDbResult(() => linkPendingJobToUser(linkScanId, user.id));

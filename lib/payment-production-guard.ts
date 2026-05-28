@@ -1,6 +1,6 @@
 /**
- * Unverified client-triggered entitlements (Paddle `checkout.completed` → REST) are unsafe
- * in production. Production uses: Paddle webhook + POST /api/user/session-from-transaction.
+ * Unverified client-triggered entitlements are unsafe in production.
+ * Production uses: Lemon Squeezy webhook + POST /api/user/session-from-order.
  */
 
 export function isProductionNodeEnv(): boolean {
@@ -33,7 +33,7 @@ export function allowUnverifiedActivateLifetime(): boolean {
 
 /** Webhook secret + DB are required; in production, SESSION_SECRET (≥16) must be set so signSessionToken cannot throw. */
 export function isVerifiedPaymentSystemConfigured(): boolean {
-  if (!process.env.PADDLE_WEBHOOK_SECRET?.trim() || !process.env.DATABASE_URL?.trim()) {
+  if (!process.env.LEMON_SQUEEZY_WEBHOOK_SECRET?.trim() || !process.env.DATABASE_URL?.trim()) {
     return false;
   }
   if (isProductionNodeEnv()) {

@@ -17,6 +17,7 @@
     "db:push:local:ipv4": "node scripts/prisma-with-local-env.cjs db push",
     "db:check": "npx tsx -r tsconfig-paths/register scripts/validate-env-database.ts",
     "db:ping": "node scripts/db-ping.cjs",
+    "auth:reset-password": "node scripts/reset-user-password.cjs",
     "db:diagnose": "node scripts/diagnose-supabase-connection.cjs",
     "db:ensure": "node scripts/ensure-db.cjs",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",

@@ -2,9 +2,8 @@ import { issueSessionFromBillingOrder } from "@/lib/billing/issue-session-from-o
 
 export const dynamic = "force-dynamic";
 
-type Body = { transactionId?: string; orderId?: string };
+type Body = { orderId?: string; transactionId?: string };
 
-/** Legacy alias for Lemon Squeezy order polling. */
 export async function POST(request: Request) {
   let body: Body;
   try {

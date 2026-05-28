@@ -1,4 +1,6 @@
 import { PrismaClient } from "@prisma/client";
+import { resolveAuthDatabaseUrl } from "@/lib/auth-database-url";
+import { ensureSslParam } from "@/lib/supabase-pg-url";
 
 function withConnectTimeout(url: string): string {
   if (/connect_timeout=/i.test(url)) {
@@ -9,17 +11,22 @@ function withConnectTimeout(url: string): string {
 }
 
 /**
- * Auth + health checks: always use DIRECT_URL (db.*.supabase.co:5432), not the pooler.
+ * Auth + health checks: Session pooler on Vercel; DIRECT_URL locally when available.
  */
-export function createDirectPrismaClient(): PrismaClient | null {
-  const directUrl = process.env.DIRECT_URL?.trim() ?? "";
-  if (!directUrl) {
+export function createAuthPrismaClient(): PrismaClient | null {
+  const resolved = resolveAuthDatabaseUrl();
+  if (!resolved) {
     return null;
   }
   return new PrismaClient({
     datasources: {
-      db: { url: withConnectTimeout(directUrl) }
+      db: { url: withConnectTimeout(ensureSslParam(resolved.url)) }
     },
     log: process.env.NODE_ENV === "development" ? ["error"] : ["error"]
   });
+}
+
+/** @deprecated Use createAuthPrismaClient */
+export function createDirectPrismaClient(): PrismaClient | null {
+  return createAuthPrismaClient();
 }

@@ -140,8 +140,13 @@ function buildLifetimeActivityMessages(plan: UserPlan, server: UserSessionPayloa
   return lines.slice(0, 4);
 }
 
-const CAN_PADDLE =
-  typeof process !== "undefined" && Boolean(process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN && process.env.NEXT_PUBLIC_PADDLE_PRICE_ID);
+const CAN_LEMON_SQUEEZY =
+  typeof process !== "undefined" &&
+  Boolean(
+    process.env.NEXT_PUBLIC_LEMON_SQUEEZY_CHECKOUT_URL?.trim() ||
+      (process.env.NEXT_PUBLIC_LEMON_SQUEEZY_VARIANT_ID?.trim() &&
+        process.env.NEXT_PUBLIC_LEMON_SQUEEZY_STORE_SLUG?.trim())
+  );
 
 export function DashboardClient() {
   const router = useRouter();
@@ -240,9 +245,9 @@ export function DashboardClient() {
         // ignore
       }
       if (checkoutStarted) {
-        router.replace("/signup?from=payment");
+        router.replace("/login?next=/dashboard");
       } else {
-        router.replace("/signup");
+        router.replace("/login?next=/dashboard");
       }
       return;
     }
@@ -255,13 +260,8 @@ export function DashboardClient() {
       return;
     }
     const payload = data as UserSessionPayload;
-    const emergencyAuth = data.emergencyAuth === true;
     const ent = payload.lifetimeEntitlement;
     const paid = ent && ent.status === "active" && ent.plan === "lifetime";
-    if (!paid && !payload.scan && !emergencyAuth) {
-      router.replace("/#scanner");
-      return;
-    }
     setServer(payload);
     setUserEmail(payload.user.email);
     setFirstName(payload.user.fullName?.split(" ")[0] ?? "there");
@@ -401,7 +401,7 @@ export function DashboardClient() {
       : getScanAnalyticsDimensions();
     trackEvent({ name: "payment_started", source: "dashboard", ...fromServer });
     trackEvent({ name: "payment_clicked_from_dashboard", state: resolvedState });
-    if (CAN_PADDLE) {
+    if (CAN_LEMON_SQUEEZY) {
       openModal("dashboard");
     } else {
       window.location.assign("/#pricing");

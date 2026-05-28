@@ -44,6 +44,13 @@ function autoHealDatabaseUrl() {
   const isPooler = /pooler\.supabase\.com$/i.test(u.hostname);
   if (!isPooler) return;
 
+  if (!u.port) {
+    u.port = "6543";
+    process.env.DATABASE_URL = u.toString().replace(/^postgres:/, "postgresql:");
+    // eslint-disable-next-line no-console
+    console.warn("[env:auto-heal] DATABASE_URL missing port — set to 6543 (Transaction pooler).");
+  }
+
   // Common Supabase pooler failure: username is plain "postgres" instead of "postgres.<project_ref>"
   if (u.username === "postgres") {
     const ref = deriveSupabaseProjectRef();
