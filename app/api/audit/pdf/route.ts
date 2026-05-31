@@ -1,8 +1,12 @@
 import { NextResponse } from "next/server";
 import puppeteer from "puppeteer";
 import { prisma } from "@/lib/prisma";
-import { getSession } from "@/lib/auth-session";
+import { getSession, getUserFromSession } from "@/lib/auth-session";
 import { safeDbResult } from "@/lib/safe-db";
+
+function isLifetimeActive(sub: { plan: string; status: string } | null): boolean {
+  return Boolean(sub && sub.plan === "lifetime" && sub.status === "active");
+}
 
 export const dynamic = "force-dynamic";
 
@@ -104,9 +108,25 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: false, error: "missing_scanId" }, { status: 400 });
   }
 
-  // Optional auth: if authed, we associate userId; otherwise we still allow download by scanId.
   const session = await getSession();
-  const userId = session.kind === "authed" ? session.userId : null;
+  if (session.kind !== "authed") {
+    return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
+  }
+  const userRes = await getUserFromSession(session.userId);
+  if (!("user" in userRes) || !userRes.user) {
+    return NextResponse.json({ ok: false, error: "user_not_found" }, { status: 404 });
+  }
+  const subRes = await safeDbResult(() =>
+    prisma.subscription.findFirst({
+      where: { userId: userRes.user.id },
+      orderBy: { startedAt: "desc" },
+      select: { plan: true, status: true }
+    })
+  );
+  if (!subRes.ok || !isLifetimeActive(subRes.value)) {
+    return NextResponse.json({ ok: false, error: "paid_required" }, { status: 403 });
+  }
+  const userId = userRes.user.id;
 
   const existingRes = await safeDbResult(() =>
     prisma.auditPdf.findUnique({
@@ -145,6 +165,9 @@ export async function GET(request: Request) {
   }
 
   const scan = scanRes.value;
+  if (scan.userId && scan.userId !== userId) {
+    return NextResponse.json({ ok: false, error: "forbidden" }, { status: 403 });
+  }
   const html = buildLuxuryHtml({
     scanId: scan.publicScanId,
     email: scan.email ?? null,

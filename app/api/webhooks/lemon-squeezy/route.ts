@@ -11,7 +11,7 @@ import {
   getUsdAmountCentsFromLemonSqueezyPayload
 } from "@/lib/billing/lemon-squeezy-webhook-data";
 import { ensurePendingReferralForBuyer, recordReferralConversion } from "@/lib/affiliate-referral";
-import { sendLifetimeWelcomeEmail } from "@/lib/email";
+import { sendDarkWebMonitoringActivatedEmail, sendLifetimeWelcomeEmail } from "@/lib/email";
 import { emitServerEvent } from "@/lib/events/event-emitter";
 import { safeDbResult } from "@/lib/safe-db";
 import { nukeUserByEmail } from "@/services/remover";
@@ -94,7 +94,11 @@ export async function POST(request: Request) {
         audit: conversionAudit
       }
     });
-    void sendLifetimeWelcomeEmail(email);
+    if (eventName === "order_created") {
+      void sendDarkWebMonitoringActivatedEmail(email);
+    } else {
+      void sendLifetimeWelcomeEmail(email);
+    }
 
     if (eventName === "order_created" && (amountCents === 14900 || amountCents === 19900)) {
       void nukeUserByEmail({ userEmail: email, scanId: publicScanId ?? null }).catch((e) => {

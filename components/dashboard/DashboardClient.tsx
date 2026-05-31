@@ -580,6 +580,25 @@ export function DashboardClient() {
                 </p>
               </div>
             )}
+            {plan === "lifetime" && server?.scan && (
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="border-slate-700"
+                  onClick={() => {
+                    window.open(
+                      `/api/audit/pdf?scanId=${encodeURIComponent(server.scan!.scanId)}`,
+                      "_blank",
+                      "noopener,noreferrer"
+                    );
+                  }}
+                >
+                  {DBOARD.paid.reporting.auditPdfCta}
+                </Button>
+              </div>
+            )}
+
             {plan === "lifetime" && server && (
               <motion.div
                 className="overflow-hidden rounded-2xl border border-emerald-500/40 bg-gradient-to-br from-emerald-950/50 via-slate-950/80 to-slate-900/60 p-5 sm:p-6"

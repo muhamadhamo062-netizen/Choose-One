@@ -3,7 +3,13 @@ import { safeDbResult } from "@/lib/safe-db";
 
 export type EmailSendResult = "sent" | "skipped" | "error";
 
-type EmailType = "auth_otp" | "lifetime_welcome" | "monthly_audit" | "integration_test" | "removal_confirmation";
+type EmailType =
+  | "auth_otp"
+  | "lifetime_welcome"
+  | "dark_web_activated"
+  | "monthly_audit"
+  | "integration_test"
+  | "removal_confirmation";
 
 function generateOtpCode(): string {
   return String(Math.floor(100000 + Math.random() * 900000));
@@ -120,6 +126,29 @@ export async function sendLifetimeWelcomeEmail(email: string): Promise<EmailSend
       <p style="margin:0 0 10px">Your PrivacyEraser lifetime plan is active.</p>
       <p style="margin:0 0 10px">Our automated removal and monitoring systems are now protecting your digital footprint.</p>
       <p style="margin:0;color:#334155">You can access your dashboard any time to review progress.</p>
+    </div>`
+  });
+}
+
+/** Post-checkout trust confirmation — lightweight Resend payload (no PDF / puppeteer). */
+export async function sendDarkWebMonitoringActivatedEmail(email: string): Promise<EmailSendResult> {
+  const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://privacyeraser.ai").replace(/\/$/, "");
+  const dashboardUrl = `${siteUrl}/dashboard`;
+  return sendWithResend({
+    type: "dark_web_activated",
+    to: email,
+    subject: "Dark Web Monitoring Activated — PrivacyEraser",
+    text: `Dark Web Monitoring Activated
+
+24/7 dark web monitoring and automated data broker removal are fully active on your account.
+
+Open your dashboard: ${dashboardUrl}`,
+    html: `<div style="font-family:Arial,sans-serif;line-height:1.6;color:#0f172a;max-width:520px">
+      <p style="margin:0 0 8px;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:#059669;font-weight:700">Security systems active</p>
+      <h1 style="margin:0 0 12px;font-size:22px">Dark Web Monitoring Activated</h1>
+      <p style="margin:0 0 14px;color:#334155">24/7 dark web monitoring and automated data broker removal are fully active on your account. No further action is required — protection continues in the background.</p>
+      <p style="margin:0 0 16px"><a href="${dashboardUrl}" style="display:inline-block;padding:10px 16px;background:#059669;color:#fff;text-decoration:none;border-radius:8px;font-weight:700">Open your dashboard</a></p>
+      <p style="margin:0;font-size:12px;color:#64748b">PrivacyEraser.ai — Lifetime Protection</p>
     </div>`
   });
 }

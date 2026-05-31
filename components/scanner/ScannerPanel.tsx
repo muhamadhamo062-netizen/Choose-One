@@ -127,6 +127,13 @@ function describeDeepScanError(raw: unknown): string {
   return "Deep Scan unavailable right now. Please try again later.";
 }
 
+function scrollToDarkWebResults(): void {
+  window.scrollTo({
+    top: document.getElementById("dark-web-results")?.offsetTop || 550,
+    behavior: "smooth"
+  });
+}
+
 export function ScannerPanel() {
   const { openModal } = useUnlockModal();
   const [lastDiscovery, setLastDiscovery] = useState<DiscoveryResult | null>(null);
@@ -149,15 +156,16 @@ export function ScannerPanel() {
   const [deepScanResult, setDeepScanResult] = useState<DeepScanResult | null>(null);
   const [deepScanProgress, setDeepScanProgress] = useState<string | null>(null);
   const [intelLogs, setIntelLogs] = useState<string[]>([]);
-  const [auditScanId, setAuditScanId] = useState<string | null>(null);
   const [publicExposure, setPublicExposure] = useState<PublicExposureResult | null>(null);
+  const [scanPercent, setScanPercent] = useState(0);
   const intelScrollRef = useRef<HTMLDivElement | null>(null);
 
   const scheduleGenerationRef = useRef(0);
   const [liveScanId, setLiveScanId] = useState<string | null>(null);
   const completionHandledForRef = useRef<string | null>(null);
+  const scrollOnCompleteRef = useRef<string | null>(null);
   const scanRunPayloadRef = useRef<{ fullName: string; email: string; stateCode: string } | null>(null);
-  const { statusSnapshot, lastEvent } = useScanRealtime(liveScanId, {
+  const { statusSnapshot, lastEvent, progress } = useScanRealtime(liveScanId, {
     enabled: status === "scanning" && liveScanId != null
   });
 
@@ -184,12 +192,13 @@ export function ScannerPanel() {
     });
     scheduleGenerationRef.current += 1;
     completionHandledForRef.current = null;
+    scrollOnCompleteRef.current = null;
     setLiveScanId(null);
     setDeepScanResult(null);
     setDeepScanProgress(null);
     setIntelLogs([]);
-    setAuditScanId(null);
     setPublicExposure(null);
+    setScanPercent(0);
     trackEvent({ name: "scan_started", acquisition_source: getAcquisitionSource() });
     setStatus("scanning");
 
@@ -235,7 +244,6 @@ export function ScannerPanel() {
           setPublicExposure(pub);
         }
         setDeepScanResult(created);
-        if (created.scanId) setAuditScanId(created.scanId);
         const payloadNow = scanRunPayloadRef.current;
         if (payloadNow && Array.isArray(created.breaches)) {
           const bridged = discoveryRiskExposuresFromDeepScan({
@@ -266,6 +274,39 @@ export function ScannerPanel() {
   useEffect(() => {
     initSfx();
   }, []);
+
+  useEffect(() => {
+    if (status !== "scanning") {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setScanPercent((prev) => (prev >= 99 ? 99 : prev + 1));
+    }, 45);
+    return () => window.clearInterval(timer);
+  }, [status]);
+
+  useEffect(() => {
+    if (status !== "scanning" || progress == null) {
+      return;
+    }
+    setScanPercent((prev) => Math.max(prev, Math.min(99, progress)));
+  }, [status, progress]);
+
+  useEffect(() => {
+    if (status !== "complete" || !resultSnapshot || !lastRisk || !lastDiscovery || !lastExposures) {
+      return;
+    }
+    const scrollKey = completedPublicScanId ?? resultSnapshot.email;
+    if (scrollOnCompleteRef.current === scrollKey) {
+      return;
+    }
+    scrollOnCompleteRef.current = scrollKey;
+    setScanPercent(100);
+    const frame = requestAnimationFrame(() => {
+      scrollToDarkWebResults();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [status, resultSnapshot, lastRisk, lastDiscovery, lastExposures, completedPublicScanId]);
 
   useEffect(() => {
     const el = intelScrollRef.current;
@@ -637,7 +678,8 @@ export function ScannerPanel() {
                     </div>
                   </div>
                 )}
-                <ProgressBar indeterminate />
+                <ProgressBar value={scanPercent} />
+                <p className="text-right text-xs font-mono tabular-nums text-slate-400">{scanPercent}%</p>
                 <p className="text-sm text-slate-400">{SCAN.scanningHelper}</p>
               </motion.div>
             </motion.div>
@@ -650,19 +692,7 @@ export function ScannerPanel() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-4"
             >
-              <Button
-                type="button"
-                className="w-full"
-                disabled={!auditScanId}
-                onClick={() => {
-                  if (!auditScanId) return;
-                  window.open(`/api/audit/pdf?scanId=${encodeURIComponent(auditScanId)}`, "_blank", "noopener,noreferrer");
-                }}
-              >
-                Download Luxury PDF Report
-              </Button>
-
-              <div className="grid gap-4 md:grid-cols-2">
+              <div id="dark-web-results" className="grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">Public Identity Exposure</p>
                   <p className="mt-1 text-sm text-slate-300">

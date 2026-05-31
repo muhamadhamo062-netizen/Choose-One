@@ -475,7 +475,8 @@ const _CORE_RAW = {
       reporting: {
         title: "Reporting",
         body:
-          "You receive periodic summaries by email with activity and current protection status. Monthly summaries are typical; timing may vary."
+          "You receive periodic summaries by email with activity and current protection status. Monthly summaries are typical; timing may vary.",
+        auditPdfCta: "Download Luxury PDF Report"
       },
       noFurtherAction:
         "No further action is required — your protection continues running automatically in the background.",
