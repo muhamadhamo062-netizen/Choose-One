@@ -127,11 +127,12 @@ function describeDeepScanError(raw: unknown): string {
   return "Deep Scan unavailable right now. Please try again later.";
 }
 
-function scrollToDarkWebResults(): void {
-  window.scrollTo({
-    top: 800,
-    behavior: "smooth"
-  });
+function scrollToScanResults(): void {
+  const el = document.getElementById("scan-results");
+  if (!el) {
+    return;
+  }
+  el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 export function ScannerPanel() {
@@ -302,10 +303,10 @@ export function ScannerPanel() {
     }
     scrollOnCompleteRef.current = scrollKey;
     setScanPercent(100);
-    const frame = requestAnimationFrame(() => {
-      scrollToDarkWebResults();
-    });
-    return () => cancelAnimationFrame(frame);
+    const timer = window.setTimeout(() => {
+      scrollToScanResults();
+    }, 80);
+    return () => window.clearTimeout(timer);
   }, [status, resultSnapshot, lastRisk, lastDiscovery, lastExposures, completedPublicScanId]);
 
   useEffect(() => {
@@ -692,7 +693,7 @@ export function ScannerPanel() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-4"
             >
-              <div id="dark-web-results" className="grid gap-4 md:grid-cols-2">
+              <div id="scan-results" className="scroll-mt-24 grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">Public Identity Exposure</p>
                   <p className="mt-1 text-sm text-slate-300">
