@@ -129,7 +129,7 @@ function describeDeepScanError(raw: unknown): string {
 
 function scrollToDarkWebResults(): void {
   window.scrollTo({
-    top: document.getElementById("dark-web-results")?.offsetTop || 550,
+    top: 800,
     behavior: "smooth"
   });
 }
