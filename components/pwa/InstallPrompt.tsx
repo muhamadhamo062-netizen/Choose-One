@@ -5,63 +5,30 @@ import { Download, X } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { useUnlockModal } from "@/hooks/useUnlockModal";
 import { trackEvent } from "@/lib/analytics";
-import {
-  getDeferredInstallPrompt,
-  promptNativeInstall,
-  subscribeDeferredInstallPrompt,
-  type BeforeInstallPromptEvent
-} from "@/lib/pwa-deferred-install";
-import { PWA_EVENT_PAYWALL_VIEWED, PWA_EVENT_SCAN_COMPLETE } from "@/lib/pwa-install-events";
-import {
-  isInAppBrowser,
-  isLikelyIOS,
-  isStandaloneMode,
-  openInSystemBrowser,
-  openIosInstallShareSheet
-} from "@/lib/pwa-platform";
+import { subscribeDeferredInstallPrompt } from "@/lib/pwa-deferred-install";
+import { PWA_EVENT_SCAN_COMPLETE } from "@/lib/pwa-install-events";
+import { isInAppBrowser, isLikelyIOS, isStandaloneMode } from "@/lib/pwa-platform";
+import { usePwaInstall } from "@/lib/use-pwa-install";
 import { cn } from "@/lib/utils";
 
-const BANNER_DISMISS_KEY = "pe_pwa_install_banner_dismissed_v2";
-const FLOAT_DISMISS_KEY = "pe_pwa_install_float_dismissed_v2";
-const AUTO_PROMPT_SESSION_KEY = "pe_pwa_auto_prompt_done_v1";
+const BANNER_DISMISS_KEY = "pe_pwa_install_banner_dismissed_v3";
+const FLOAT_DISMISS_KEY = "pe_pwa_install_float_dismissed_v3";
+const AUTO_PROMPT_SESSION_KEY = "pe_pwa_auto_prompt_done_v2";
 
 export function InstallPrompt() {
   const { isOpen: paywallOpen } = useUnlockModal();
+  const { install, busy } = usePwaInstall();
 
-  const [scanDone, setScanDone] = useState(false);
-  const [postScanIdleReady, setPostScanIdleReady] = useState(false);
-  const [paywallClosed, setPaywallClosed] = useState(false);
-  const [paywallViewed, setPaywallViewed] = useState(false);
-  const [engagement15s, setEngagement15s] = useState(false);
-  const [deferred, setDeferred] = useState<BeforeInstallPromptEvent | null>(null);
-  const [installBusy, setInstallBusy] = useState(false);
-
+  const [deferredReady, setDeferredReady] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [floatDismissed, setFloatDismissed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-
-  const installCompletedFired = useRef(false);
-  const shownBanner = useRef(false);
-  const shownFloat = useRef(false);
-  const paywallEverOpened = useRef(false);
-  const deferredRef = useRef<BeforeInstallPromptEvent | null>(null);
-
-  useEffect(() => {
-    deferredRef.current = deferred;
-  }, [deferred]);
+  const autoPrompted = useRef(false);
 
   useEffect(() => {
     return subscribeDeferredInstallPrompt((event) => {
-      setDeferred(event);
+      setDeferredReady(Boolean(event));
     });
-  }, []);
-
-  useEffect(() => {
-    if (isStandaloneMode()) {
-      return;
-    }
-    const t = window.setTimeout(() => setEngagement15s(true), 15_000);
-    return () => clearTimeout(t);
   }, []);
 
   useEffect(() => {
@@ -81,54 +48,6 @@ export function InstallPrompt() {
   }, []);
 
   useEffect(() => {
-    if (paywallOpen) {
-      paywallEverOpened.current = true;
-      return;
-    }
-    if (paywallEverOpened.current) {
-      setPaywallClosed(true);
-    }
-  }, [paywallOpen]);
-
-  useEffect(() => {
-    if (isStandaloneMode() || !scanDone) {
-      return;
-    }
-    setPostScanIdleReady(false);
-    const t = window.setTimeout(() => setPostScanIdleReady(true), 12_000);
-    return () => clearTimeout(t);
-  }, [scanDone]);
-
-  useEffect(() => {
-    if (isStandaloneMode()) {
-      return;
-    }
-    const onScan = () => setScanDone(true);
-    const onPaywall = () => setPaywallViewed(true);
-    window.addEventListener(PWA_EVENT_SCAN_COMPLETE, onScan);
-    window.addEventListener(PWA_EVENT_PAYWALL_VIEWED, onPaywall);
-    return () => {
-      window.removeEventListener(PWA_EVENT_SCAN_COMPLETE, onScan);
-      window.removeEventListener(PWA_EVENT_PAYWALL_VIEWED, onPaywall);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (isStandaloneMode()) {
-      return;
-    }
-    const onInstalled = () => {
-      if (installCompletedFired.current) {
-        return;
-      }
-      installCompletedFired.current = true;
-      trackEvent({ name: "install_completed" });
-    };
-    window.addEventListener("appinstalled", onInstalled);
-    return () => window.removeEventListener("appinstalled", onInstalled);
-  }, []);
-
-  useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
     const apply = () => setIsMobile(mq.matches);
     apply();
@@ -136,95 +55,45 @@ export function InstallPrompt() {
     return () => mq.removeEventListener("change", apply);
   }, []);
 
-  const runOneTapInstall = useCallback(
-    async (surface: "banner" | "floating" | "auto_post_scan") => {
-      if (isStandaloneMode() || installBusy) {
-        return;
-      }
-      setInstallBusy(true);
-      trackEvent({ name: "install_clicked", surface });
-
-      try {
-        if (isInAppBrowser()) {
-          openInSystemBrowser();
-          return;
-        }
-
-        const nativePrompt = deferredRef.current ?? getDeferredInstallPrompt();
-        if (nativePrompt) {
-          const outcome = await promptNativeInstall(nativePrompt);
-          if (outcome === "accepted" && !installCompletedFired.current) {
-            installCompletedFired.current = true;
-            trackEvent({ name: "install_completed" });
-          }
-          setDeferred(null);
-          return;
-        }
-
-        if (isLikelyIOS()) {
-          await openIosInstallShareSheet();
-          return;
-        }
-
-        // Android/desktop: wait briefly for beforeinstallprompt (SW may still be registering).
-        for (const delay of [0, 400, 900]) {
-          if (delay > 0) {
-            await new Promise((r) => window.setTimeout(r, delay));
-          }
-          const late = deferredRef.current ?? getDeferredInstallPrompt();
-          if (late) {
-            const outcome = await promptNativeInstall(late);
-            if (outcome === "accepted" && !installCompletedFired.current) {
-              installCompletedFired.current = true;
-              trackEvent({ name: "install_completed" });
-            }
-            setDeferred(null);
-            return;
-          }
-        }
-      } finally {
-        setInstallBusy(false);
-      }
-    },
-    [installBusy]
-  );
-
-  const installEligible =
-    scanDone || postScanIdleReady || paywallClosed || paywallViewed || engagement15s;
-
-  /** After scan: auto-open native install on Android when the browser is ready (one tap to confirm). */
+  /** Android: when native install becomes available, open system dialog once (Confirm = installed). */
   useEffect(() => {
-    if (!scanDone || paywallOpen || isStandaloneMode() || isLikelyIOS() || isInAppBrowser()) {
+    if (
+      !deferredReady ||
+      paywallOpen ||
+      isStandaloneMode() ||
+      isLikelyIOS() ||
+      isInAppBrowser() ||
+      autoPrompted.current
+    ) {
       return;
     }
-    let cancelled = false;
+    try {
+      if (sessionStorage.getItem(AUTO_PROMPT_SESSION_KEY) === "1") {
+        return;
+      }
+      sessionStorage.setItem(AUTO_PROMPT_SESSION_KEY, "1");
+    } catch {
+      // ignore
+    }
+    autoPrompted.current = true;
     const t = window.setTimeout(() => {
-      if (cancelled) {
-        return;
+      void install("auto");
+    }, 900);
+    return () => window.clearTimeout(t);
+  }, [deferredReady, paywallOpen, install]);
+
+  useEffect(() => {
+    if (isStandaloneMode()) {
+      return;
+    }
+    const onScan = () => {
+      if (!isLikelyIOS() && !isInAppBrowser()) {
+        void install("auto");
       }
-      try {
-        if (sessionStorage.getItem(AUTO_PROMPT_SESSION_KEY) === "1") {
-          return;
-        }
-      } catch {
-        return;
-      }
-      const nativePrompt = deferredRef.current ?? getDeferredInstallPrompt();
-      if (!nativePrompt) {
-        return;
-      }
-      try {
-        sessionStorage.setItem(AUTO_PROMPT_SESSION_KEY, "1");
-      } catch {
-        // ignore
-      }
-      void runOneTapInstall("auto_post_scan");
-    }, 700);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
     };
-  }, [scanDone, paywallOpen, deferred, runOneTapInstall]);
+    window.addEventListener(PWA_EVENT_SCAN_COMPLETE, onScan);
+    return () => window.removeEventListener(PWA_EVENT_SCAN_COMPLETE, onScan);
+  }, [install]);
 
   const dismissBanner = useCallback(() => {
     setBannerDismissed(true);
@@ -246,29 +115,15 @@ export function InstallPrompt() {
     }
   }, []);
 
-  const showBanner = !isStandaloneMode() && !paywallOpen && !bannerDismissed && installEligible;
-  const showFloat =
-    !isStandaloneMode() && !paywallOpen && !floatDismissed && isMobile && (scanDone || installEligible);
+  const showUi = !isStandaloneMode() && !paywallOpen;
+  const showBanner = showUi && !bannerDismissed && isMobile;
+  const showFloat = showUi && !floatDismissed && isMobile;
 
-  useEffect(() => {
-    if (showBanner && !shownBanner.current) {
-      shownBanner.current = true;
-      trackEvent({ name: "install_prompt_shown", surface: "banner" });
-    }
-  }, [showBanner]);
-
-  useEffect(() => {
-    if (showFloat && !shownFloat.current) {
-      shownFloat.current = true;
-      trackEvent({ name: "install_prompt_shown", surface: "floating" });
-    }
-  }, [showFloat]);
-
-  if (isStandaloneMode()) {
+  if (!showUi) {
     return null;
   }
 
-  const installLabel = installBusy ? "Installing…" : "Install App";
+  const installLabel = busy ? "Installing…" : "Install App";
 
   return (
     <>
@@ -284,24 +139,19 @@ export function InstallPrompt() {
         >
           <div className="mx-auto flex max-w-2xl flex-col items-stretch justify-between gap-3 sm:flex-row sm:items-center">
             <p className="text-sm text-slate-200 sm:flex-1">
-              Install PrivacyEraser.ai for faster privacy scans
+              Install PrivacyEraser.ai on your phone — one tap, works like a native app
             </p>
             <div className="flex shrink-0 flex-wrap gap-2">
               <Button
                 type="button"
                 className="px-4 py-2 text-sm"
-                disabled={installBusy}
-                aria-busy={installBusy}
-                onClick={() => void runOneTapInstall("banner")}
+                disabled={busy}
+                aria-busy={busy}
+                onClick={() => void install("banner")}
               >
                 {installLabel}
               </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="px-4 py-2 text-sm"
-                onClick={dismissBanner}
-              >
+              <Button type="button" variant="outline" className="px-4 py-2 text-sm" onClick={dismissBanner}>
                 Not now
               </Button>
             </div>
@@ -325,8 +175,8 @@ export function InstallPrompt() {
           >
             <button
               type="button"
-              disabled={installBusy}
-              onClick={() => void runOneTapInstall("floating")}
+              disabled={busy}
+              onClick={() => void install("floating")}
               className="group flex min-w-0 flex-1 items-center gap-2 py-2.5 pl-3 pr-1 text-left transition hover:bg-slate-800/90 disabled:opacity-60"
             >
               <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/20 text-primary">

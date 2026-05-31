@@ -7,7 +7,7 @@
     "predev": "node scripts/ensure-prisma.cjs && node scripts/pwa-generate-icons.cjs",
     "dev": "node scripts/run-with-env-local.cjs next dev",
     "build": "node scripts/run-with-env-local.cjs npx prisma generate && next build",
-    "vercel-build": "npx prisma generate && next build",
+    "vercel-build": "node scripts/pwa-generate-icons.cjs && npx prisma generate && next build",
     "start": "next start",
     "lint": "next lint",
     "lint:product": "eslint app components --ext .js,.jsx,.ts,.tsx --max-warnings 0 --ignore-pattern \"app/api/**\"",

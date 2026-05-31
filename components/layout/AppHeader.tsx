@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut, Shield } from "lucide-react";
+import { Download, LogOut, Shield } from "lucide-react";
 import { PE_STATE_CHANGE } from "@/lib/global-user-state";
+import { isStandaloneMode } from "@/lib/pwa-platform";
+import { usePwaInstall } from "@/lib/use-pwa-install";
 import { cn } from "@/lib/utils";
 
 const AUTH_STATUS_URL = "/api/auth/status";
@@ -32,6 +34,7 @@ export function AppHeader({ initialAuthed }: AppHeaderProps) {
   const pathname = usePathname();
   const [hasUser, setHasUser] = useState(initialAuthed);
   const [loggingOut, setLoggingOut] = useState(false);
+  const { install, busy: installBusy, canShow: canInstall } = usePwaInstall();
 
   useEffect(() => {
     setHasUser(initialAuthed);
@@ -94,6 +97,20 @@ export function AppHeader({ initialAuthed }: AppHeaderProps) {
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-2 sm:gap-3">
+          {canInstall && !isStandaloneMode() && (
+            <button
+              type="button"
+              disabled={installBusy}
+              onClick={() => void install("header")}
+              className={cn(
+                "inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-100 transition-colors hover:border-emerald-400/60 sm:px-3 sm:text-sm",
+                installBusy && "opacity-60"
+              )}
+            >
+              <Download className="h-3.5 w-3.5" aria-hidden />
+              {installBusy ? "…" : "Install"}
+            </button>
+          )}
           {hasUser ? (
             <>
               <Link

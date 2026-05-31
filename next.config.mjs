@@ -25,11 +25,22 @@ const withPWAWrapped = withPWA({
   reloadOnOnline: true,
   cacheOnFrontendNav: false,
   cacheStartUrl: false,
+  dynamicStartUrl: false,
   workboxOptions: {
+    clientsClaim: true,
+    skipWaiting: true,
     runtimeCaching: [
       {
         urlPattern: ({ url }) => url.pathname.startsWith("/api/"),
         handler: "NetworkOnly"
+      },
+      {
+        urlPattern: /^https:\/\/.*\.(?:png|jpg|jpeg|svg|gif|webp|ico)$/i,
+        handler: "CacheFirst",
+        options: {
+          cacheName: "pe-static-images",
+          expiration: { maxEntries: 64, maxAgeSeconds: 30 * 24 * 60 * 60 }
+        }
       }
     ]
   }

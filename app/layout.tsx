@@ -45,6 +45,13 @@ export default async function RootLayout({
 
   return (
     <html lang="en" className="dark">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){window.__peDeferredInstall=null;window.addEventListener("beforeinstallprompt",function(e){e.preventDefault();window.__peDeferredInstall=e;window.dispatchEvent(new Event("pe-install-ready"));});})();`
+          }}
+        />
+      </head>
       <body className="flex min-h-screen flex-col">
         <UnlockModalProvider>
           <StateBootstrap />
