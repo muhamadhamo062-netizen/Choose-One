@@ -19,6 +19,7 @@ import { STORAGE_LEAD_EMAIL } from "@/lib/growth-constants";
 import type { DiscoveryResult } from "@/lib/types/discovery";
 import { getStateLabel, US_STATE_OPTIONS } from "@/lib/us-states";
 import { PWA_EVENT_SCAN_COMPLETE } from "@/lib/pwa-install-events";
+import { scrollToScanResultsWithRetry } from "@/lib/scroll-to-scan-results";
 import { PrivateInviteBlock } from "@/components/referral/PrivateInviteBlock";
 import { getPendingReferralCodeForAttribution, shouldCountReferralConversion } from "@/lib/referral-link";
 import { discoveryRiskExposuresFromDeepScan } from "@/lib/deep-scan-ui-bridge";
@@ -125,14 +126,6 @@ function describeDeepScanError(raw: unknown): string {
     return "Deep Scan is busy right now. Please wait a moment and try again.";
   }
   return "Deep Scan unavailable right now. Please try again later.";
-}
-
-function scrollToScanResults(): void {
-  const el = document.getElementById("scan-results");
-  if (!el) {
-    return;
-  }
-  el.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 export function ScannerPanel() {
@@ -259,6 +252,14 @@ export function ScannerPanel() {
         }
         setStatus("complete");
         setLiveScanId(null);
+        if (created.scanId) {
+          setCompletedPublicScanId(created.scanId);
+        }
+        try {
+          window.dispatchEvent(new Event(PWA_EVENT_SCAN_COMPLETE));
+        } catch {
+          // ignore
+        }
         playPulse("found");
       } catch (error) {
         if (gen !== scheduleGenerationRef.current) {
@@ -303,10 +304,8 @@ export function ScannerPanel() {
     }
     scrollOnCompleteRef.current = scrollKey;
     setScanPercent(100);
-    const timer = window.setTimeout(() => {
-      scrollToScanResults();
-    }, 80);
-    return () => window.clearTimeout(timer);
+    scrollToScanResultsWithRetry();
+    return undefined;
   }, [status, resultSnapshot, lastRisk, lastDiscovery, lastExposures, completedPublicScanId]);
 
   useEffect(() => {
@@ -693,7 +692,11 @@ export function ScannerPanel() {
               animate={{ opacity: 1, y: 0 }}
               className="space-y-4"
             >
-              <div id="scan-results" className="scroll-mt-24 grid gap-4 md:grid-cols-2">
+              <div
+                id="scan-results"
+                tabIndex={-1}
+                className="scroll-mt-24 outline-none grid gap-4 md:grid-cols-2"
+              >
                 <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5">
                   <p className="text-xs font-bold uppercase tracking-[0.2em] text-red-300">Public Identity Exposure</p>
                   <p className="mt-1 text-sm text-slate-300">

@@ -38,6 +38,21 @@ function isLikelyIOS(): boolean {
   return navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1;
 }
 
+function isLikelyAndroid(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  return /Android/i.test(navigator.userAgent);
+}
+
+function isInAppBrowser(): boolean {
+  if (typeof navigator === "undefined") {
+    return false;
+  }
+  const ua = navigator.userAgent;
+  return /FBAN|FBAV|Instagram|Line\/|Twitter|LinkedInApp|Snapchat|TikTok/i.test(ua);
+}
+
 export function InstallPrompt() {
   const { isOpen: paywallOpen } = useUnlockModal();
 
@@ -55,8 +70,9 @@ export function InstallPrompt() {
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [floatDismissed, setFloatDismissed] = useState(false);
   const [iosSheetOpen, setIosSheetOpen] = useState(false);
+  const [androidSheetOpen, setAndroidSheetOpen] = useState(false);
+  const [inAppSheetOpen, setInAppSheetOpen] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
-  const [noInstallHint, setNoInstallHint] = useState(false);
 
   const installCompletedFired = useRef(false);
   const shownBanner = useRef(false);
@@ -70,6 +86,8 @@ export function InstallPrompt() {
       return;
     }
     setIosSheetOpen(false);
+    setAndroidSheetOpen(false);
+    setInAppSheetOpen(false);
   }, [paywallOpen]);
 
   useEffect(() => {
@@ -181,12 +199,44 @@ export function InstallPrompt() {
         return;
       }
       setIosSheetOpen(true);
-    }, 1800);
+    }, 600);
     return () => {
       cancelled = true;
       clearTimeout(t);
     };
   }, [scanDone, paywallOpen]);
+
+  useEffect(() => {
+    if (!scanDone || isStandaloneMode() || paywallOpen) {
+      return;
+    }
+    if (isLikelyIOS()) {
+      return;
+    }
+    if (!isLikelyAndroid() || isInAppBrowser()) {
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      if (cancelled) {
+        return;
+      }
+      try {
+        if (sessionStorage.getItem(IOS_SHEET_SESSION_KEY) === "1") {
+          return;
+        }
+      } catch {
+        return;
+      }
+      if (!deferred) {
+        setAndroidSheetOpen(true);
+      }
+    }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [scanDone, paywallOpen, deferred]);
 
   const installEligible =
     scanDone || postScanIdleReady || paywallClosed || paywallViewed || engagement15s;
@@ -226,36 +276,54 @@ export function InstallPrompt() {
 
   const openIosSheet = useCallback((surface: "banner" | "floating") => {
     trackEvent({ name: "install_clicked", surface });
+    setAndroidSheetOpen(false);
+    setInAppSheetOpen(false);
     setIosSheetOpen(true);
+  }, []);
+
+  const openAndroidSheet = useCallback((surface: "banner" | "floating") => {
+    trackEvent({ name: "install_clicked", surface });
+    setIosSheetOpen(false);
+    setInAppSheetOpen(false);
+    setAndroidSheetOpen(true);
+  }, []);
+
+  const openInAppSheet = useCallback((surface: "banner" | "floating") => {
+    trackEvent({ name: "install_clicked", surface });
+    setIosSheetOpen(false);
+    setAndroidSheetOpen(false);
+    setInAppSheetOpen(true);
   }, []);
 
   const runNativeInstall = useCallback(
     async (surface: "banner" | "floating") => {
+      if (isInAppBrowser()) {
+        openInAppSheet(surface);
+        return;
+      }
       if (isLikelyIOS()) {
         openIosSheet(surface);
         return;
       }
-      if (!deferred) {
-        setNoInstallHint(true);
-        window.setTimeout(() => setNoInstallHint(false), 8000);
+      if (deferred) {
         trackEvent({ name: "install_clicked", surface });
+        try {
+          await deferred.prompt();
+          const choice = await deferred.userChoice;
+          if (choice.outcome === "accepted" && !installCompletedFired.current) {
+            installCompletedFired.current = true;
+            trackEvent({ name: "install_completed" });
+          }
+        } catch {
+          // user dismissed
+        } finally {
+          setDeferred(null);
+        }
         return;
       }
-      trackEvent({ name: "install_clicked", surface });
-      try {
-        await deferred.prompt();
-        const choice = await deferred.userChoice;
-        if (choice.outcome === "accepted" && !installCompletedFired.current) {
-          installCompletedFired.current = true;
-          trackEvent({ name: "install_completed" });
-        }
-      } catch {
-        // user dismissed
-      } finally {
-        setDeferred(null);
-      }
+      openAndroidSheet(surface);
     },
-    [deferred, openIosSheet]
+    [deferred, openAndroidSheet, openInAppSheet, openIosSheet]
   );
 
   const dismissBanner = useCallback(() => {
@@ -288,9 +356,28 @@ export function InstallPrompt() {
     }
   }, []);
 
+  const dismissAndroidSheet = useCallback(() => {
+    setAndroidSheetOpen(false);
+    trackEvent({ name: "install_dismissed", surface: "android_sheet" });
+    try {
+      sessionStorage.setItem(IOS_SHEET_SESSION_KEY, "1");
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  const dismissInAppSheet = useCallback(() => {
+    setInAppSheetOpen(false);
+    trackEvent({ name: "install_dismissed", surface: "in_app_browser" });
+  }, []);
+
   const showBanner = !isStandaloneMode() && !paywallOpen && !bannerDismissed && installEligible;
   const showFloat =
-    !isStandaloneMode() && !paywallOpen && !floatDismissed && isMobile && installEligible;
+    !isStandaloneMode() &&
+    !paywallOpen &&
+    !floatDismissed &&
+    isMobile &&
+    (scanDone || installEligible);
 
   useEffect(() => {
     if (showBanner && !shownBanner.current) {
@@ -334,11 +421,6 @@ export function InstallPrompt() {
               Install PrivacyEraser.ai for faster privacy scans
             </p>
             <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center sm:gap-3">
-              {noInstallHint && !isLikelyIOS() && !deferred && (
-                <span className="text-xs text-amber-200/90">
-                  Use your browser menu to add this site if you don’t see a prompt.
-                </span>
-              )}
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
@@ -414,8 +496,8 @@ export function InstallPrompt() {
               Works like an app — faster scanning and instant privacy checks from your home screen.
             </p>
             <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-slate-200">
-              <li>Tap the Share button</li>
-              <li>Select &quot;Add to Home Screen&quot;</li>
+              <li>Tap the Share button (square with arrow)</li>
+              <li>Scroll and tap &quot;Add to Home Screen&quot;</li>
               <li>Tap Add</li>
             </ol>
             <div className="mt-6 flex flex-wrap justify-end gap-2">
@@ -428,6 +510,67 @@ export function InstallPrompt() {
                 Not now
               </Button>
               <Button type="button" className="px-4 py-2 text-sm" onClick={dismissIosSheet}>
+                Got it
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {androidSheetOpen && !paywallOpen && (
+        <div
+          className="fixed inset-0 z-[105] flex items-end justify-center bg-black/55 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pe-android-install-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-2xl">
+            <h2 id="pe-android-install-title" className="text-lg font-semibold text-white">
+              Install PrivacyEraser.ai on Android
+            </h2>
+            <p className="mt-1 text-sm text-slate-400">
+              Add to your home screen for one-tap access — like a native app.
+            </p>
+            <ol className="mt-4 list-decimal space-y-2 pl-5 text-sm text-slate-200">
+              <li>Open this site in Chrome (not Instagram/Facebook browser)</li>
+              <li>Tap the menu (⋮) in the top-right</li>
+              <li>Tap &quot;Install app&quot; or &quot;Add to Home screen&quot;</li>
+              <li>Confirm Install</li>
+            </ol>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="px-4 py-2 text-sm"
+                onClick={dismissAndroidSheet}
+              >
+                Not now
+              </Button>
+              <Button type="button" className="px-4 py-2 text-sm" onClick={dismissAndroidSheet}>
+                Got it
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {inAppSheetOpen && !paywallOpen && (
+        <div
+          className="fixed inset-0 z-[105] flex items-end justify-center bg-black/55 p-4 sm:items-center"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="pe-inapp-install-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl border border-slate-800 bg-slate-950 p-5 shadow-2xl">
+            <h2 id="pe-inapp-install-title" className="text-lg font-semibold text-white">
+              Open in your browser to install
+            </h2>
+            <p className="mt-2 text-sm text-slate-300">
+              In-app browsers (Instagram, Facebook, etc.) cannot install apps. Copy the link and open it in Chrome or
+              Safari, then install from the menu.
+            </p>
+            <div className="mt-6 flex flex-wrap justify-end gap-2">
+              <Button type="button" className="px-4 py-2 text-sm" onClick={dismissInAppSheet}>
                 Got it
               </Button>
             </div>
