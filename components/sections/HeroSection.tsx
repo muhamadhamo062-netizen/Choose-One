@@ -1,7 +1,8 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { Radar, Shield } from "lucide-react";
+import { Radar } from "lucide-react";
+import { PrivacyEraserLogo } from "@/components/brand/PrivacyEraserLogo";
 import { trackEvent } from "@/lib/analytics";
 import { CORE_PRODUCT_COPY as COPY } from "@/lib/product-messaging";
 import { useGlobalUserState } from "@/lib/useGlobalUserState";
@@ -26,23 +27,15 @@ export function HeroSection() {
           className="mx-auto max-w-3xl text-center"
         >
           <div className="mb-5 flex justify-center">
-            <div className="relative flex h-14 w-14 items-center justify-center">
+            <div className="relative">
               <motion.span
                 aria-hidden
-                className="absolute inline-flex h-full w-full rounded-full border border-blue-400/40"
-                animate={{ scale: [1, 1.35], opacity: [0.6, 0] }}
-                transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut" }}
+                className="absolute -inset-3 rounded-2xl border border-indigo-400/35"
+                animate={{ scale: [1, 1.2], opacity: [0.55, 0] }}
+                transition={{ duration: 2.4, repeat: Infinity, ease: "easeOut" }}
               />
-              <motion.span
-                aria-hidden
-                className="absolute inline-flex h-full w-full rounded-full border border-blue-300/30"
-                animate={{ scale: [1, 1.6], opacity: [0.45, 0] }}
-                transition={{ duration: 2.2, repeat: Infinity, ease: "easeOut", delay: 0.45 }}
-              />
-              <span className="relative flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-blue-500/30 to-blue-400/10 ring-1 ring-blue-400/50">
-                <Shield className="h-5 w-5 text-blue-400" aria-hidden />
-              </span>
-              <Radar className="pointer-events-none absolute -right-1 -top-1 h-4 w-4 text-blue-300/80" aria-hidden />
+              <PrivacyEraserLogo variant="mark" markSize={56} className="relative drop-shadow-[0_0_28px_rgba(99,102,241,0.45)]" />
+              <Radar className="pointer-events-none absolute -right-1 -top-1 h-4 w-4 text-emerald-300/90" aria-hidden />
             </div>
           </div>
           <h1 className="text-balance text-4xl font-extrabold leading-tight tracking-tight text-white sm:text-5xl sm:leading-tight">

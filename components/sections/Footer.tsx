@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Shield } from "lucide-react";
+import { PrivacyEraserLogo } from "@/components/brand/PrivacyEraserLogo";
 import { CORE_PRODUCT_COPY as COPY } from "@/lib/product-messaging";
 import { cn } from "@/lib/utils";
 
@@ -34,11 +34,8 @@ export function Footer() {
       <div className="section-container py-12 lg:py-14">
         <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 lg:grid-cols-5 lg:gap-6 xl:gap-10">
           <div className="sm:col-span-2 lg:col-span-1">
-            <Link href="/" className="inline-flex items-center gap-2.5 text-white transition-opacity hover:opacity-90">
-              <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/20 ring-1 ring-primary/30">
-                <Shield className="h-4 w-4 text-primary" aria-hidden />
-              </span>
-              <span className="text-base font-bold tracking-tight">{FT.brand}</span>
+            <Link href="/" className="inline-flex transition-opacity hover:opacity-90">
+              <PrivacyEraserLogo variant="full" markSize={36} />
             </Link>
             <p className="mt-3 max-w-xs text-sm leading-relaxed text-slate-500">{FT.blurb}</p>
           </div>

@@ -3,10 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Download, LogOut, Shield } from "lucide-react";
+import { LogOut } from "lucide-react";
+import { PrivacyEraserLogo } from "@/components/brand/PrivacyEraserLogo";
 import { PE_STATE_CHANGE } from "@/lib/global-user-state";
-import { isStandaloneMode } from "@/lib/pwa-platform";
-import { usePwaInstall } from "@/lib/use-pwa-install";
 import { cn } from "@/lib/utils";
 
 const AUTH_STATUS_URL = "/api/auth/status";
@@ -34,7 +33,6 @@ export function AppHeader({ initialAuthed }: AppHeaderProps) {
   const pathname = usePathname();
   const [hasUser, setHasUser] = useState(initialAuthed);
   const [loggingOut, setLoggingOut] = useState(false);
-  const { install, busy: installBusy, canShow: canInstall } = usePwaInstall();
 
   useEffect(() => {
     setHasUser(initialAuthed);
@@ -86,31 +84,14 @@ export function AppHeader({ initialAuthed }: AppHeaderProps) {
         <div className="flex min-w-0 shrink-0 items-center">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-sm font-bold tracking-tight text-white transition-opacity hover:opacity-90"
+            className="inline-flex min-w-0 items-center transition-opacity hover:opacity-90"
             aria-current={home ? "page" : undefined}
           >
-            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/20 ring-1 ring-primary/35">
-              <Shield className="h-4 w-4 text-primary" aria-hidden />
-            </span>
-            <span>PrivacyEraser.ai</span>
+            <PrivacyEraserLogo variant="full" markSize={34} compactWordmark className="text-sm" />
           </Link>
         </div>
 
         <div className="flex shrink-0 items-center justify-end gap-2 sm:gap-3">
-          {canInstall && !isStandaloneMode() && (
-            <button
-              type="button"
-              disabled={installBusy}
-              onClick={() => void install("header")}
-              className={cn(
-                "inline-flex min-h-9 items-center justify-center gap-1 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-2.5 py-1.5 text-xs font-semibold text-emerald-100 transition-colors hover:border-emerald-400/60 sm:px-3 sm:text-sm",
-                installBusy && "opacity-60"
-              )}
-            >
-              <Download className="h-3.5 w-3.5" aria-hidden />
-              {installBusy ? "…" : "Install"}
-            </button>
-          )}
           {hasUser ? (
             <>
               <Link
