@@ -9,8 +9,12 @@ export function LegalProseLayout({ title, children }: { title: string; children:
           <div className="prose-legal mt-8 space-y-6 text-slate-300 [&_h2]:mb-2 [&_h2]:mt-8 [&_h2]:text-xl [&_h2]:font-bold [&_h2]:text-white first:[&_h2]:mt-0 [&_p]:leading-7">
             {children}
           </div>
-          <p className="mt-12 border-t border-slate-800 pt-6 text-sm italic text-slate-500">
-            This is placeholder legal content and should be reviewed by a licensed attorney before production use.
+          <p className="mt-12 border-t border-slate-800 pt-6 text-sm text-slate-500">
+            Questions?{" "}
+            <a href="/contact" className="text-primary hover:underline">
+              Contact us
+            </a>
+            .
           </p>
         </article>
       </main>

@@ -264,7 +264,7 @@ const _CORE_RAW = {
   footer: {
     brand: "PrivacyEraser.ai",
     blurb:
-      "U.S. exposure neutralization: scan for broker + breach signals, nuke listings, and verify reappearance — pay once for lifetime coverage.",
+      "Scan U.S. exposure, remove listings, and stay monitored — one-time Lifetime Protection, no subscription.",
     columns: {
       product: "Product",
       company: "Company",
@@ -275,8 +275,8 @@ const _CORE_RAW = {
       freeScan: "Free privacy scan",
       manualGuides: "Manual Removal Guides",
       removePersonalData: "Remove personal data",
-      dataBrokerRemoval: "Data broker removal",
-      optOutBrokers: "Opt out of data brokers",
+      dataBrokerRemoval: "Listing removal",
+      optOutBrokers: "Opt-out guides",
       about: "About",
       contact: "Contact",
       support: "Support",
@@ -290,7 +290,7 @@ const _CORE_RAW = {
     privacyNote:
       "We never sell your data. Ever. We only store what’s required to run your protection. Sensitive data is automatically deleted after processing.",
     disclaimer:
-      "PrivacyEraser.ai provides privacy automation tools. Results vary by data broker. Not a law firm and not legal advice."
+      "PrivacyEraser.ai provides privacy protection tools. Results vary by site. Not a law firm and not legal advice."
   },
 
   /** /contact — support and response expectations. */
